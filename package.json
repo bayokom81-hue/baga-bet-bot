@@ -4,7 +4,7 @@
   "description": "BAGA BET BOT – Bot Telegram d'analyse statistique sportive professionnelle",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
+    "start": "npx prisma generate && node index.js",
     "dev": "nodemon index.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
