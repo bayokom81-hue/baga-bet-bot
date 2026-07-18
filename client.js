@@ -1,4 +1,3 @@
-// Base de données désactivée — mode sans persistance
 const logger = require('../utils/logger');
 
 const mockPrisma = new Proxy({}, {
