@@ -104,12 +104,12 @@ const bot = new Telegraf(BOT_TOKEN);
 // /start
 bot.command('start', (ctx) => {
   const name = ctx.from?.first_name || 'ami';
-  ctx.replyWithMarkdown(
-    `⚽ *Bienvenue sur BAGA BET BOT*, ${name} !\n\nJe fournis des statistiques et analyses sportives.\n\n📊 *Commandes :*\n/matchs — Matchs du jour\n/analyse NomEquipe — Analyse statistique\n/statistiques NomEquipe — Stats équipe\n/premium — Abonnement Premium\n/abonner — Payer par Mobile Money\n/verifier — Vérifier votre paiement\n/help — Aide\n\n⚠️ _Données à titre informatif uniquement._`,
-    Markup.keyboard([
-      ['⚽ Matchs du jour', '📊 Analyse'],
-      ['📈 Statistiques', '💎 Premium'],
-    ]).resize()
+  const appUrl = RENDER_URL || `https://baga-bet-bot-1.onrender.com`;
+  ctx.reply(
+    `⚽ Bienvenue sur BAGA BET BOT, ${name} !\n\nStatistiques et analyses sportives en temps réel.\n\n👇 Ouvre l'application :`,
+    Markup.inlineKeyboard([
+      [Markup.button.webApp('🚀 Ouvrir BAGA BET', appUrl)],
+    ])
   );
 });
 
@@ -605,17 +605,112 @@ bot.catch((err, ctx) => {
   ctx.reply('⚠️ Erreur. Réessayez.').catch(() => {});
 });
 
-// Serveur HTTP pour satisfaire Render Web Service
+// Serveur HTTP — Mini App + API
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 const PORT = process.env.PORT || 3000;
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL || '';
+
+async function handleApi(req, res, urlObj) {
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  try {
+    if (urlObj.pathname === '/api/matchs') {
+      const today = new Date().toISOString().split('T')[0];
+      const data = await apiGet('/fixtures', { date: today, timezone: 'Africa/Abidjan' });
+      const matches = (data || []).slice(0, 30).map(m => ({
+        id: m.fixture?.id,
+        time: m.fixture?.date ? new Date(m.fixture.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Abidjan' }) : '--:--',
+        home: m.teams?.home?.name,
+        away: m.teams?.away?.name,
+        homeLogo: m.teams?.home?.logo,
+        awayLogo: m.teams?.away?.logo,
+        league: m.league?.name,
+        leagueLogo: m.league?.logo,
+        status: m.fixture?.status?.short,
+        scoreHome: m.goals?.home,
+        scoreAway: m.goals?.away,
+      }));
+      res.end(JSON.stringify({ ok: true, matches }));
+    } else if (urlObj.pathname === '/api/analyse') {
+      const teamName = urlObj.searchParams.get('team');
+      if (!teamName) return res.end(JSON.stringify({ ok: false, error: 'Paramètre team manquant' }));
+      const teams = await apiGet('/teams', { search: teamName });
+      if (!teams?.length) return res.end(JSON.stringify({ ok: false, error: `Équipe "${teamName}" introuvable` }));
+      const team = teams[0].team;
+      let mainLeague = null, season = null;
+      for (let yr = new Date().getFullYear(); yr >= new Date().getFullYear() - 2; yr--) {
+        const lr = await apiGet('/leagues', { team: team.id, season: yr, type: 'League' });
+        if (lr?.[0]?.league) { mainLeague = lr[0].league; season = yr; break; }
+      }
+      if (!mainLeague) return res.end(JSON.stringify({ ok: false, error: 'Aucune ligue trouvée' }));
+      const [statsRes, fixturesRes] = await Promise.all([
+        apiGet('/teams/statistics', { team: team.id, season, league: mainLeague.id }),
+        apiGet('/fixtures', { team: team.id, season, last: 5 }),
+      ]);
+      let stats = Array.isArray(statsRes) ? statsRes?.[0] : statsRes;
+      if (!stats?.fixtures?.played?.total) {
+        const ps = await apiGet('/teams/statistics', { team: team.id, season: season - 1, league: mainLeague.id });
+        const s2 = Array.isArray(ps) ? ps?.[0] : ps;
+        if (s2?.fixtures?.played?.total) { stats = s2; season = season - 1; }
+      }
+      const form = (stats?.form || '').split('').slice(-5);
+      const lastMatches = (fixturesRes || []).slice(0, 5).map(m => {
+        const isHome = m.teams?.home?.id === team.id;
+        return {
+          opponent: isHome ? m.teams?.away?.name : m.teams?.home?.name,
+          opponentLogo: isHome ? m.teams?.away?.logo : m.teams?.home?.logo,
+          goalsFor: isHome ? m.goals?.home : m.goals?.away,
+          goalsAgainst: isHome ? m.goals?.away : m.goals?.home,
+          isHome,
+        };
+      });
+      res.end(JSON.stringify({
+        ok: true,
+        team: { name: team.name, logo: team.logo },
+        league: { name: mainLeague.name, logo: mainLeague.logo },
+        season,
+        form,
+        played: stats?.fixtures?.played?.total,
+        wins: stats?.fixtures?.wins?.total,
+        draws: stats?.fixtures?.draws?.total,
+        loses: stats?.fixtures?.loses?.total,
+        goalsFor: stats?.goals?.for?.average?.total,
+        goalsAgainst: stats?.goals?.against?.average?.total,
+        goalsForTotal: stats?.goals?.for?.total?.total,
+        goalsAgainstTotal: stats?.goals?.against?.total?.total,
+        cleanSheets: stats?.clean_sheet?.total,
+        lastMatches,
+      }));
+    } else {
+      res.writeHead(404);
+      res.end(JSON.stringify({ ok: false, error: 'Route inconnue' }));
+    }
+  } catch (e) {
+    res.writeHead(500);
+    res.end(JSON.stringify({ ok: false, error: e.message }));
+  }
+}
+
 const server = http.createServer((req, res) => {
-  res.writeHead(200);
-  res.end('BAGA BET BOT actif');
+  const urlObj = new URL(req.url, `http://localhost:${PORT}`);
+  if (urlObj.pathname.startsWith('/api/')) {
+    return handleApi(req, res, urlObj);
+  }
+  // Servir la Mini App
+  const filePath = path.join(__dirname, 'webapp.html');
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.end(fs.readFileSync(filePath));
+  } else {
+    res.writeHead(200);
+    res.end('BAGA BET BOT actif');
+  }
 });
+
 server.listen(PORT, () => {
   console.log(`Serveur HTTP sur port ${PORT}`);
-  // Auto-ping toutes les 10 minutes pour éviter l'endormissement
   if (RENDER_URL) {
     setInterval(() => {
       http.get(RENDER_URL).on('error', () => {});
