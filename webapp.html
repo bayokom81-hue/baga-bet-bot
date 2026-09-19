@@ -20,6 +20,15 @@
   .logo span{color:var(--muted);font-weight:400;font-size:12px;display:block;letter-spacing:0;margin-top:1px}
   .premium-badge{background:linear-gradient(135deg,#ffd700,#ff8c00);color:#000;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;cursor:pointer}
 
+  /* Sous-onglets matchs */
+  .tab-bar{display:flex;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:3px;margin-bottom:12px;gap:3px}
+  .tab-btn{flex:1;border:none;background:none;color:var(--muted);font-size:13px;font-weight:600;padding:8px;border-radius:7px;cursor:pointer;transition:all .2s}
+  .tab-btn.active{background:var(--accent);color:#000}
+
+  /* Séparateur de date */
+  .date-sep{font-size:12px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.5px;padding:10px 2px 6px;display:flex;align-items:center;gap:8px}
+  .date-sep::after{content:'';flex:1;height:1px;background:var(--border)}
+
   .nav{position:fixed;bottom:0;left:0;right:0;height:var(--nav-h);background:#111;border-top:1px solid var(--border);display:flex;z-index:100}
   .nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:none;background:none;color:var(--muted);font-size:10px;cursor:pointer;transition:color .2s}
   .nav-btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
@@ -159,7 +168,12 @@
 
 <!-- Pages -->
 <div id="page-matchs" class="page active">
-  <div id="matchs-content"><div class="loader"><div class="spinner"></div>Chargement des matchs...</div></div>
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tab-today" onclick="switchMatchTab('today')">📅 Aujourd'hui</button>
+    <button class="tab-btn" id="tab-upcoming" onclick="switchMatchTab('upcoming')">🔜 À venir</button>
+  </div>
+  <div id="matchs-today"><div class="loader"><div class="spinner"></div>Chargement des matchs...</div></div>
+  <div id="matchs-upcoming" style="display:none"></div>
 </div>
 
 <div id="page-analyse" class="page">
@@ -267,49 +281,91 @@ function showPage(name) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
   document.getElementById('nav-' + name).classList.add('active');
-  if (name === 'matchs' && !document.getElementById('matchs-loaded')) loadMatchs();
+  if (name === 'matchs' && !matchTabLoaded.today) loadMatchs();
   if (name === 'favoris') loadFavoris();
   if (name === 'coupon' && !document.getElementById('coupon-loaded')) loadCoupon();
 }
 
 // ── Matchs ────────────────────────────────────────────────────────
+let matchTabLoaded = { today: false, upcoming: false };
+
+function switchMatchTab(tab) {
+  document.getElementById('tab-today').classList.toggle('active', tab === 'today');
+  document.getElementById('tab-upcoming').classList.toggle('active', tab === 'upcoming');
+  document.getElementById('matchs-today').style.display = tab === 'today' ? '' : 'none';
+  document.getElementById('matchs-upcoming').style.display = tab === 'upcoming' ? '' : 'none';
+  if (tab === 'upcoming' && !matchTabLoaded.upcoming) loadUpcoming();
+}
+
+function buildMatchCards(matches, groupByDate) {
+  if (!matches?.length) return `<div class="empty"><span class="big">📭</span>Aucun match disponible.</div>`;
+  const byGroup = {};
+  for (const m of matches) {
+    const key = groupByDate ? (m.date || '') : (m.league || 'Autre');
+    if (!byGroup[key]) byGroup[key] = { logo: groupByDate ? null : m.leagueLogo, matches: [] };
+    byGroup[key].matches.push(m);
+  }
+  let html = '';
+  for (const [label, grp] of Object.entries(byGroup)) {
+    if (groupByDate) {
+      html += `<div class="date-sep">📅 ${label}</div>`;
+      // par ligue dans chaque jour
+      const byLeague = {};
+      for (const m of grp.matches) {
+        if (!byLeague[m.league]) byLeague[m.league] = { logo: m.leagueLogo, matches: [] };
+        byLeague[m.league].matches.push(m);
+      }
+      for (const [league, lgrp] of Object.entries(byLeague)) {
+        html += `<div class="card-title"><img src="${lgrp.logo||''}" onerror="this.style.display='none'"> ${league}</div>`;
+        for (const m of lgrp.matches) html += matchCardHtml(m, true);
+      }
+    } else {
+      html += `<div class="card-title"><img src="${grp.logo||''}" onerror="this.style.display='none'"> ${label}</div>`;
+      for (const m of grp.matches) html += matchCardHtml(m, false);
+    }
+  }
+  return html;
+}
+
+function matchCardHtml(m, upcoming) {
+  const isScheduled = ['SCHEDULED','TIMED'].includes(m.status);
+  const isLive = ['IN_PLAY','PAUSED','HALF_TIME'].includes(m.status);
+  const scoreBlock = upcoming || isScheduled
+    ? `<div class="match-score time">${m.time}</div>`
+    : isLive
+      ? `<div class="match-score live">⚡ ${m.scoreHome??0}-${m.scoreAway??0}</div>`
+      : `<div class="match-score">${m.scoreHome??'-'}-${m.scoreAway??'-'}</div>`;
+  return `<div class="match-card">
+    <div class="match-row">
+      <div class="match-team"><img src="${m.homeLogo||''}" onerror="this.src=''" width="26" height="26"><span class="match-team-name">${m.home}</span></div>
+      ${scoreBlock}
+      <div class="match-team right"><img src="${m.awayLogo||''}" onerror="this.src=''" width="26" height="26"><span class="match-team-name">${m.away}</span></div>
+    </div>
+  </div>`;
+}
+
 async function loadMatchs() {
+  const el = document.getElementById('matchs-today');
   try {
     const res = await fetch(BASE + '/api/matchs');
     const data = await res.json();
-    const el = document.getElementById('matchs-content');
-    if (!data.ok || !data.matches?.length) {
-      el.innerHTML = `<div class="empty"><span class="big">📭</span>Aucun match aujourd'hui.</div>`;
-      return;
-    }
-    const byLeague = {};
-    for (const m of data.matches) {
-      if (!byLeague[m.league]) byLeague[m.league] = { logo: m.leagueLogo, matches: [] };
-      byLeague[m.league].matches.push(m);
-    }
-    let html = '<div id="matchs-loaded"></div>';
-    for (const [league, grp] of Object.entries(byLeague)) {
-      html += `<div class="card-title"><img src="${grp.logo||''}" onerror="this.style.display='none'"> ${league}</div>`;
-      for (const m of grp.matches) {
-        const isScheduled = ['SCHEDULED','TIMED'].includes(m.status);
-        const isLive = ['IN_PLAY','PAUSED','HALF_TIME'].includes(m.status);
-        const scoreBlock = isScheduled
-          ? `<div class="match-score time">${m.time}</div>`
-          : isLive
-            ? `<div class="match-score live">⚡ ${m.scoreHome??0}-${m.scoreAway??0}</div>`
-            : `<div class="match-score">${m.scoreHome??'-'}-${m.scoreAway??'-'}</div>`;
-        html += `<div class="match-card">
-          <div class="match-row">
-            <div class="match-team"><img src="${m.homeLogo||''}" onerror="this.src=''" width="26" height="26"><span class="match-team-name">${m.home}</span></div>
-            ${scoreBlock}
-            <div class="match-team right"><img src="${m.awayLogo||''}" onerror="this.src=''" width="26" height="26"><span class="match-team-name">${m.away}</span></div>
-          </div>
-        </div>`;
-      }
-    }
-    el.innerHTML = html;
+    el.innerHTML = buildMatchCards(data.matches, false);
+    matchTabLoaded.today = true;
   } catch(e) {
-    document.getElementById('matchs-content').innerHTML = `<div class="empty">⚠️ Erreur de chargement</div>`;
+    el.innerHTML = `<div class="empty">⚠️ Erreur de chargement</div>`;
+  }
+}
+
+async function loadUpcoming() {
+  const el = document.getElementById('matchs-upcoming');
+  el.innerHTML = `<div class="loader"><div class="spinner"></div>Chargement des matchs à venir...</div>`;
+  try {
+    const res = await fetch(BASE + '/api/matchs-a-venir');
+    const data = await res.json();
+    el.innerHTML = buildMatchCards(data.matches, true);
+    matchTabLoaded.upcoming = true;
+  } catch(e) {
+    el.innerHTML = `<div class="empty">⚠️ Erreur de chargement</div>`;
   }
 }
 

@@ -769,8 +769,9 @@ async function handleApi(req, res, urlObj) {
   try {
     if (urlObj.pathname === '/api/matchs') {
       const rawMatches = await getTodayMatches();
-      const matches = rawMatches.slice(0, 40).map(m => ({
+      const formatMatch = m => ({
         id: m.id,
+        date: m.utcDate ? new Date(m.utcDate).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Abidjan' }) : '',
         time: m.utcDate ? new Date(m.utcDate).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Abidjan' }) : '--:--',
         home: m.homeTeam?.name,
         away: m.awayTeam?.name,
@@ -781,6 +782,28 @@ async function handleApi(req, res, urlObj) {
         status: m.status,
         scoreHome: m.score?.fullTime?.home,
         scoreAway: m.score?.fullTime?.away,
+      });
+      const matches = rawMatches.slice(0, 40).map(formatMatch);
+      res.end(JSON.stringify({ ok: true, matches }));
+    } else if (urlObj.pathname === '/api/matchs-a-venir') {
+      const today = new Date();
+      const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+      const inSevenDays = new Date(today); inSevenDays.setDate(today.getDate() + 7);
+      const dateFrom = tomorrow.toISOString().split('T')[0];
+      const dateTo = inSevenDays.toISOString().split('T')[0];
+      const data = await apiGet('/matches', { dateFrom, dateTo, status: 'SCHEDULED' });
+      const rawMatches = data?.matches || [];
+      const matches = rawMatches.slice(0, 60).map(m => ({
+        id: m.id,
+        date: m.utcDate ? new Date(m.utcDate).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Abidjan' }) : '',
+        time: m.utcDate ? new Date(m.utcDate).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Abidjan' }) : '--:--',
+        home: m.homeTeam?.name,
+        away: m.awayTeam?.name,
+        homeLogo: m.homeTeam?.crest,
+        awayLogo: m.awayTeam?.crest,
+        league: m.competition?.name,
+        leagueLogo: m.competition?.emblem,
+        status: m.status,
       }));
       res.end(JSON.stringify({ ok: true, matches }));
     } else if (urlObj.pathname === '/api/analyse') {
