@@ -578,6 +578,14 @@ bot.catch((err, ctx) => {
   ctx.reply('⚠️ Erreur. Réessayez.').catch(() => {});
 });
 
+// Serveur HTTP pour satisfaire Render Web Service
+const http = require('http');
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end('BAGA BET BOT actif');
+}).listen(PORT, () => console.log(`Serveur HTTP sur port ${PORT}`));
+
 // Démarrage
 bot.launch().then(() => {
   console.log(`✅ BAGA BET BOT démarré - Mode: ${DEMO_MODE ? 'DÉMO' : 'API RÉELLE'}`);
