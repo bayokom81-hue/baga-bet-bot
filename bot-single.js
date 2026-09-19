@@ -8,6 +8,9 @@ const FOOTBALL_API_KEY = process.env.FOOTBALL_API_KEY || '';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.trim())).filter(Boolean);
 const DEMO_MODE = !FOOTBALL_API_KEY;
 
+// Compétitions disponibles sur le plan gratuit football-data.org
+const FD_COMPETITIONS = ['PL','PD','BL1','SA','FL1','CL','EC','WC','PPL','DED','BSA'];
+
 // ── Jemenipay ─────────────────────────────────────────────────────
 const JEMENI_API_KEY = process.env.JEMENI_API_KEY || '';
 const JEMENI_SECRET_KEY = process.env.JEMENI_SECRET_KEY || '';
@@ -69,21 +72,46 @@ const premiumUsers = {};
 
 if (!BOT_TOKEN) { console.error('BOT_TOKEN manquant'); process.exit(1); }
 
-// ── API Football ─────────────────────────────────────────────────
+// ── API football-data.org v4 ──────────────────────────────────────
 const api = axios.create({
-  baseURL: 'https://v3.football.api-sports.io',
-  timeout: 10000,
-  headers: { 'x-apisports-key': FOOTBALL_API_KEY },
+  baseURL: 'https://api.football-data.org/v4',
+  timeout: 15000,
+  headers: { 'X-Auth-Token': FOOTBALL_API_KEY },
 });
 
 async function apiGet(endpoint, params = {}) {
   try {
     const r = await api.get(endpoint, { params });
-    return r.data?.response || [];
+    return r.data;
   } catch (e) {
-    console.error(`API [${endpoint}]: ${e.message}`);
+    console.error(`API [${endpoint}]: ${e.response?.data?.message || e.message}`);
     return null;
   }
+}
+
+// Chercher une équipe par nom dans toutes les compétitions gratuites
+async function findTeam(name) {
+  const nameLower = name.toLowerCase();
+  for (const comp of FD_COMPETITIONS) {
+    try {
+      const data = await apiGet(`/competitions/${comp}/teams`);
+      if (!data?.teams) continue;
+      const found = data.teams.find(t =>
+        t.name.toLowerCase().includes(nameLower) ||
+        t.shortName?.toLowerCase().includes(nameLower) ||
+        t.tla?.toLowerCase().includes(nameLower)
+      );
+      if (found) return { team: found, competition: data.competition };
+    } catch(e) { continue; }
+  }
+  return null;
+}
+
+// Matchs du jour toutes compétitions gratuites
+async function getTodayMatches() {
+  const today = new Date().toISOString().split('T')[0];
+  const data = await apiGet('/matches', { dateFrom: today, dateTo: today });
+  return data?.matches || [];
 }
 
 // ── Données démo ──────────────────────────────────────────────────
@@ -128,36 +156,34 @@ bot.command('matchs', async (ctx) => {
     if (DEMO_MODE) {
       matches = DEMO_MATCHES;
     } else {
-      const today = new Date().toISOString().split('T')[0];
-      matches = await apiGet('/fixtures', { date: today });
+      matches = await getTodayMatches();
     }
 
     if (!matches || !matches.length) {
       return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, '📭 Aucun match trouvé pour aujourd\'hui.');
     }
 
-    const sorted = [
-      ...matches.filter(m => PRIORITY.some(p => m.league?.name?.includes(p))),
-      ...matches.filter(m => !PRIORITY.some(p => m.league?.name?.includes(p))),
-    ].slice(0, 25);
-
+    // football-data.org format: m.competition.name, m.homeTeam.name, m.awayTeam.name, m.score, m.status
     const byLeague = {};
-    for (const m of sorted) {
-      const l = m.league?.name || 'Autre';
+    for (const m of matches.slice(0, 30)) {
+      const l = m.competition?.name || m.league?.name || 'Autre';
       if (!byLeague[l]) byLeague[l] = [];
       byLeague[l].push(m);
     }
 
-    let text = `📅 *Matchs du ${new Date().toLocaleDateString('fr-FR')}*${!DEMO_MODE ? ` (${matches.length} au total)` : ' (démo)'}\n\n`;
+    const FD_STATUS = { 'SCHEDULED':'🕐', 'LIVE':'⚽', 'IN_PLAY':'⚽', 'PAUSED':'⏸️', 'FINISHED':'✅', 'POSTPONED':'📅', 'CANCELLED':'❌', 'SUSPENDED':'⏸️', 'NS':'🕐', '1H':'⚽', HT:'⏸️', '2H':'⚽', FT:'✅' };
+
+    let text = `📅 *Matchs du ${new Date().toLocaleDateString('fr-FR')}* (${matches.length} matchs)\n\n`;
     for (const [league, games] of Object.entries(byLeague)) {
       text += `🏆 *${league}*\n`;
       for (const g of games) {
-        const st = STATUS_EMOJI[g.fixture?.status?.short] || '⚪';
-        const home = g.teams?.home?.name || '?';
-        const away = g.teams?.away?.name || '?';
-        const score = g.fixture?.status?.short === 'NS'
-          ? new Date(g.fixture.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-          : `${g.goals?.home ?? '-'} - ${g.goals?.away ?? '-'}`;
+        const st = FD_STATUS[g.status || g.fixture?.status?.short] || '⚪';
+        const home = g.homeTeam?.name || g.teams?.home?.name || '?';
+        const away = g.awayTeam?.name || g.teams?.away?.name || '?';
+        const isScheduled = ['SCHEDULED','NS'].includes(g.status || g.fixture?.status?.short);
+        const score = isScheduled
+          ? new Date(g.utcDate || g.fixture?.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Abidjan' })
+          : `${g.score?.fullTime?.home ?? g.goals?.home ?? '-'} - ${g.score?.fullTime?.away ?? g.goals?.away ?? '-'}`;
         text += `${st} ${home} vs ${away} | ${score}\n`;
       }
       text += '\n';
@@ -171,6 +197,34 @@ bot.command('matchs', async (ctx) => {
   }
 });
 
+// Helper: analyse d'équipe avec football-data.org
+async function getTeamAnalysis(teamName) {
+  const result = await findTeam(teamName);
+  if (!result) return null;
+  const { team, competition } = result;
+
+  // Derniers 5 matchs de l'équipe
+  const matchesData = await apiGet(`/teams/${team.id}/matches`, { limit: 5, status: 'FINISHED' });
+  const lastMatches = matchesData?.matches || [];
+
+  let wins = 0, draws = 0, losses = 0, gf = 0, ga = 0;
+  const form = [];
+  for (const m of lastMatches) {
+    const isHome = m.homeTeam?.id === team.id;
+    const gs = isHome ? m.score?.fullTime?.home : m.score?.fullTime?.away;
+    const gc = isHome ? m.score?.fullTime?.away : m.score?.fullTime?.home;
+    gf += gs || 0; ga += gc || 0;
+    if (gs > gc) { wins++; form.push('W'); }
+    else if (gs === gc) { draws++; form.push('D'); }
+    else { losses++; form.push('L'); }
+  }
+  const played = lastMatches.length;
+  const avgFor = played ? (gf / played).toFixed(1) : 'N/A';
+  const avgAga = played ? (ga / played).toFixed(1) : 'N/A';
+
+  return { team, competition, lastMatches, form, wins, draws, losses, avgFor, avgAga, played };
+}
+
 // /analyse
 bot.command('analyse', async (ctx) => {
   const args = ctx.message?.text?.split(' ').slice(1).join(' ').trim();
@@ -183,51 +237,21 @@ bot.command('analyse', async (ctx) => {
       return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, text, { parse_mode: 'Markdown' });
     }
 
-    const teams = await apiGet('/teams', { search: args });
-    if (!teams?.length) return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, `❌ Équipe "${args}" introuvable.`);
+    const data = await getTeamAnalysis(args);
+    if (!data) return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, `❌ Équipe "${args}" introuvable dans les ligues disponibles.`);
 
-    const team = teams[0].team;
+    const { team, competition, lastMatches, form, avgFor, avgAga } = data;
+    const formStr = form.map(r => r==='W'?'✅':r==='D'?'🟡':'❌').join(' ') || 'N/A';
+    const lastStr = lastMatches.slice(0,5).map(m => {
+      const isHome = m.homeTeam?.id === team.id;
+      const opp = isHome ? m.awayTeam?.name : m.homeTeam?.name;
+      const gs = isHome ? m.score?.fullTime?.home : m.score?.fullTime?.away;
+      const gc = isHome ? m.score?.fullTime?.away : m.score?.fullTime?.home;
+      const r = gs > gc ? '✅' : gs === gc ? '🟡' : '❌';
+      return `${r} vs ${opp} (${gs}-${gc})`;
+    }).join('\n');
 
-    // Trouver la ligue courante, avec fallback sur saison précédente si pas de données
-    let mainLeague = null, season = null;
-    for (let yr = new Date().getFullYear(); yr >= new Date().getFullYear() - 2; yr--) {
-      const lr = await apiGet('/leagues', { team: team.id, season: yr, type: 'League' });
-      if (lr?.[0]?.league) { mainLeague = lr[0].league; season = yr; break; }
-    }
-    if (!mainLeague) {
-      return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, `❌ Aucune ligue trouvée pour "${args}".`);
-    }
-
-    const [statsRes, fixturesRes] = await Promise.all([
-      apiGet('/teams/statistics', { team: team.id, season, league: mainLeague.id }),
-      apiGet('/fixtures', { team: team.id, season, last: 5 }),
-    ]);
-
-    let stats = Array.isArray(statsRes) ? statsRes?.[0] : statsRes;
-    // Si pas de matchs joués, essayer saison précédente
-    if (!stats?.fixtures?.played?.total && season > new Date().getFullYear() - 2) {
-      const prevSeason = season - 1;
-      const prevStats = await apiGet('/teams/statistics', { team: team.id, season: prevSeason, league: mainLeague.id });
-      const ps = Array.isArray(prevStats) ? prevStats?.[0] : prevStats;
-      if (ps?.fixtures?.played?.total) { stats = ps; season = prevSeason; }
-    }
-    const form = (stats?.form || '').split('').slice(-5).map(r => r==='W'?'✅':r==='D'?'🟡':'❌').join(' ') || 'N/A';
-    const avgFor = parseFloat(stats?.goals?.for?.average?.total)?.toFixed(1) || 'N/A';
-    const avgAga = parseFloat(stats?.goals?.against?.average?.total)?.toFixed(1) || 'N/A';
-
-    let lastStr = '';
-    if (fixturesRes?.length) {
-      lastStr = fixturesRes.slice(0, 5).map(m => {
-        const isHome = m.teams?.home?.id === team.id;
-        const opp = isHome ? m.teams?.away?.name : m.teams?.home?.name;
-        const gs = isHome ? m.goals?.home : m.goals?.away;
-        const ga = isHome ? m.goals?.away : m.goals?.home;
-        const r = gs > ga ? '✅' : gs === ga ? '🟡' : '❌';
-        return `${r} vs ${opp} (${gs}-${ga})`;
-      }).join('\n');
-    }
-
-    const text = `📊 *Analyse — ${team.name}*\n\n🏟️ *Forme récente*\n${form}\n\n⚽ *Derniers résultats*\n${lastStr || 'N/A'}\n\n📈 *Buts*\n• Marqués : ${avgFor}/match\n• Encaissés : ${avgAga}/match\n\n⚠️ _Données statistiques à titre informatif._`;
+    const text = `📊 *Analyse — ${team.name}*\n🏆 ${competition?.name || ''}\n\n🏟️ *Forme récente (5 derniers)*\n${formStr}\n\n⚽ *Derniers résultats*\n${lastStr || 'N/A'}\n\n📈 *Buts (5 derniers matchs)*\n• Marqués : ${avgFor}/match\n• Encaissés : ${avgAga}/match\n\n⚠️ _Données statistiques à titre informatif._`;
     await ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, text, { parse_mode: 'Markdown' });
   } catch (e) {
     console.error(`/analyse: ${e.message}`);
@@ -247,26 +271,11 @@ bot.command('statistiques', async (ctx) => {
       return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, text, { parse_mode: 'Markdown' });
     }
 
-    const teams = await apiGet('/teams', { search: args });
-    if (!teams?.length) return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, `❌ Équipe "${args}" introuvable.`);
+    const data = await getTeamAnalysis(args);
+    if (!data) return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, `❌ Équipe "${args}" introuvable.`);
 
-    const team = teams[0].team;
-    let league2 = null, season2 = null;
-    for (let yr = new Date().getFullYear(); yr >= new Date().getFullYear() - 2; yr--) {
-      const lr = await apiGet('/leagues', { team: team.id, season: yr, type: 'League' });
-      if (lr?.[0]?.league) { league2 = lr[0].league; season2 = yr; break; }
-    }
-    if (!league2) return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, `❌ Aucune ligue trouvée pour "${args}".`);
-    let res = await apiGet('/teams/statistics', { team: team.id, season: season2, league: league2.id });
-    let s = Array.isArray(res) ? res?.[0] : res;
-    if (!s?.fixtures?.played?.total) {
-      const res2 = await apiGet('/teams/statistics', { team: team.id, season: season2 - 1, league: league2.id });
-      const s2 = Array.isArray(res2) ? res2?.[0] : res2;
-      if (s2?.fixtures?.played?.total) { s = s2; season2 = season2 - 1; }
-    }
-    if (!s?.fixtures?.played?.total) return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, `❌ Aucune statistique pour "${args}".`);
-
-    const text = `📈 *${team.name}* — Saison ${season2}\n🏆 ${s.league?.name}\n\n🎮 *Matchs*\n• Total : ${s.fixtures?.played?.total ?? 'N/A'}\n• Victoires : ${s.fixtures?.wins?.total ?? 'N/A'}\n• Nuls : ${s.fixtures?.draws?.total ?? 'N/A'}\n• Défaites : ${s.fixtures?.loses?.total ?? 'N/A'}\n\n⚽ *Buts*\n• Marqués : ${s.goals?.for?.total?.total ?? 'N/A'} (${s.goals?.for?.average?.total ?? 'N/A'}/match)\n• Encaissés : ${s.goals?.against?.total?.total ?? 'N/A'} (${s.goals?.against?.average?.total ?? 'N/A'}/match)\n\n🧤 Clean sheets : ${s.clean_sheet?.total ?? 'N/A'}\n\n⚠️ _Statistiques à titre informatif._`;
+    const { team, competition, wins, draws, losses, avgFor, avgAga, played } = data;
+    const text = `📈 *${team.name}*\n🏆 ${competition?.name || ''}\n\n🎮 *5 derniers matchs*\n• Joués : ${played}\n• Victoires : ${wins}\n• Nuls : ${draws}\n• Défaites : ${losses}\n\n⚽ *Buts*\n• Marqués : ${avgFor}/match\n• Encaissés : ${avgAga}/match\n\n⚠️ _Statistiques à titre informatif._`;
     await ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, text, { parse_mode: 'Markdown' });
   } catch (e) {
     console.error(`/statistiques: ${e.message}`);
@@ -617,71 +626,47 @@ async function handleApi(req, res, urlObj) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   try {
     if (urlObj.pathname === '/api/matchs') {
-      const today = new Date().toISOString().split('T')[0];
-      const data = await apiGet('/fixtures', { date: today, timezone: 'Africa/Abidjan' });
-      const matches = (data || []).slice(0, 30).map(m => ({
-        id: m.fixture?.id,
-        time: m.fixture?.date ? new Date(m.fixture.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Abidjan' }) : '--:--',
-        home: m.teams?.home?.name,
-        away: m.teams?.away?.name,
-        homeLogo: m.teams?.home?.logo,
-        awayLogo: m.teams?.away?.logo,
-        league: m.league?.name,
-        leagueLogo: m.league?.logo,
-        status: m.fixture?.status?.short,
-        scoreHome: m.goals?.home,
-        scoreAway: m.goals?.away,
+      const rawMatches = await getTodayMatches();
+      const matches = rawMatches.slice(0, 40).map(m => ({
+        id: m.id,
+        time: m.utcDate ? new Date(m.utcDate).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Abidjan' }) : '--:--',
+        home: m.homeTeam?.name,
+        away: m.awayTeam?.name,
+        homeLogo: m.homeTeam?.crest,
+        awayLogo: m.awayTeam?.crest,
+        league: m.competition?.name,
+        leagueLogo: m.competition?.emblem,
+        status: m.status,
+        scoreHome: m.score?.fullTime?.home,
+        scoreAway: m.score?.fullTime?.away,
       }));
       res.end(JSON.stringify({ ok: true, matches }));
     } else if (urlObj.pathname === '/api/analyse') {
       const teamName = urlObj.searchParams.get('team');
       if (!teamName) return res.end(JSON.stringify({ ok: false, error: 'Paramètre team manquant' }));
-      const teams = await apiGet('/teams', { search: teamName });
-      if (!teams?.length) return res.end(JSON.stringify({ ok: false, error: `Équipe "${teamName}" introuvable` }));
-      const team = teams[0].team;
-      let mainLeague = null, season = null;
-      for (let yr = new Date().getFullYear(); yr >= new Date().getFullYear() - 2; yr--) {
-        const lr = await apiGet('/leagues', { team: team.id, season: yr, type: 'League' });
-        if (lr?.[0]?.league) { mainLeague = lr[0].league; season = yr; break; }
-      }
-      if (!mainLeague) return res.end(JSON.stringify({ ok: false, error: 'Aucune ligue trouvée' }));
-      const [statsRes, fixturesRes] = await Promise.all([
-        apiGet('/teams/statistics', { team: team.id, season, league: mainLeague.id }),
-        apiGet('/fixtures', { team: team.id, season, last: 5 }),
-      ]);
-      let stats = Array.isArray(statsRes) ? statsRes?.[0] : statsRes;
-      if (!stats?.fixtures?.played?.total) {
-        const ps = await apiGet('/teams/statistics', { team: team.id, season: season - 1, league: mainLeague.id });
-        const s2 = Array.isArray(ps) ? ps?.[0] : ps;
-        if (s2?.fixtures?.played?.total) { stats = s2; season = season - 1; }
-      }
-      const form = (stats?.form || '').split('').slice(-5);
-      const lastMatches = (fixturesRes || []).slice(0, 5).map(m => {
-        const isHome = m.teams?.home?.id === team.id;
+      const data = await getTeamAnalysis(teamName);
+      if (!data) return res.end(JSON.stringify({ ok: false, error: `Équipe "${teamName}" introuvable` }));
+      const { team, competition, lastMatches, form, wins, draws, losses, avgFor, avgAga, played } = data;
+      const lastMatchesMapped = lastMatches.slice(0, 5).map(m => {
+        const isHome = m.homeTeam?.id === team.id;
         return {
-          opponent: isHome ? m.teams?.away?.name : m.teams?.home?.name,
-          opponentLogo: isHome ? m.teams?.away?.logo : m.teams?.home?.logo,
-          goalsFor: isHome ? m.goals?.home : m.goals?.away,
-          goalsAgainst: isHome ? m.goals?.away : m.goals?.home,
+          opponent: isHome ? m.awayTeam?.name : m.homeTeam?.name,
+          opponentLogo: isHome ? m.awayTeam?.crest : m.homeTeam?.crest,
+          goalsFor: isHome ? m.score?.fullTime?.home : m.score?.fullTime?.away,
+          goalsAgainst: isHome ? m.score?.fullTime?.away : m.score?.fullTime?.home,
           isHome,
         };
       });
       res.end(JSON.stringify({
         ok: true,
-        team: { name: team.name, logo: team.logo },
-        league: { name: mainLeague.name, logo: mainLeague.logo },
-        season,
+        team: { name: team.name, logo: team.crest },
+        league: { name: competition?.name, logo: competition?.emblem },
+        season: new Date().getFullYear(),
         form,
-        played: stats?.fixtures?.played?.total,
-        wins: stats?.fixtures?.wins?.total,
-        draws: stats?.fixtures?.draws?.total,
-        loses: stats?.fixtures?.loses?.total,
-        goalsFor: stats?.goals?.for?.average?.total,
-        goalsAgainst: stats?.goals?.against?.average?.total,
-        goalsForTotal: stats?.goals?.for?.total?.total,
-        goalsAgainstTotal: stats?.goals?.against?.total?.total,
-        cleanSheets: stats?.clean_sheet?.total,
-        lastMatches,
+        played, wins, draws, loses: losses,
+        goalsFor: avgFor, goalsAgainst: avgAga,
+        goalsForTotal: null, goalsAgainstTotal: null, cleanSheets: null,
+        lastMatches: lastMatchesMapped,
       }));
     } else {
       res.writeHead(404);
