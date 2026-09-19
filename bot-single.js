@@ -70,6 +70,11 @@ const PLANS = {
 // Utilisateurs premium (en mémoire — persistance basique)
 const premiumUsers = {};
 
+// Équipes favorites par utilisateur { userId: [{name, logo, competition}] }
+const favoriteTeams = {};
+const MAX_FAVORITES_FREE = 3;
+const MAX_FAVORITES_PREMIUM = 10;
+
 if (!BOT_TOKEN) { console.error('BOT_TOKEN manquant'); process.exit(1); }
 
 // ── API football-data.org v4 ──────────────────────────────────────
@@ -292,7 +297,15 @@ bot.command('analyse', async (ctx) => {
     }).join('\n');
 
     const text = `📊 *Analyse — ${team.name}*\n🏆 ${competition?.name || ''}\n\n🏟️ *Forme récente (5 derniers)*\n${formStr}\n\n⚽ *Derniers résultats*\n${lastStr || 'N/A'}\n\n📈 *Buts (5 derniers matchs)*\n• Marqués : ${avgFor}/match\n• Encaissés : ${avgAga}/match\n\n⚠️ _Données statistiques à titre informatif._`;
-    await ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, text, { parse_mode: 'Markdown' });
+    const userId = ctx.from?.id;
+    const favs = favoriteTeams[userId] || [];
+    const isFav = favs.some(f => f.name === team.name);
+    await ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, text, {
+      parse_mode: 'Markdown',
+      reply_markup: Markup.inlineKeyboard([
+        [Markup.button.callback(isFav ? '💔 Retirer des favoris' : '❤️ Ajouter aux favoris', `fav_${isFav ? 'remove' : 'add'}_${team.id}_${team.name.substring(0,20)}_${competition?.name?.substring(0,15) || ''}_${team.crest || ''}`)]
+      ]).reply_markup
+    });
   } catch (e) {
     console.error(`/analyse: ${e.message}`);
     ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, '⚠️ Erreur lors de l\'analyse.');
@@ -320,6 +333,95 @@ bot.command('statistiques', async (ctx) => {
   } catch (e) {
     console.error(`/statistiques: ${e.message}`);
     ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, '⚠️ Erreur lors de la récupération.');
+  }
+});
+
+// ── Handler bouton favoris ────────────────────────────────────────
+bot.action(/^fav_(add|remove)_(\d+)_(.+)_(.*)_(.*)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const [, action, teamId, teamName, compName, logo] = ctx.match;
+  const userId = ctx.from?.id;
+  const isPremium = !!premiumUsers[userId];
+  const maxFav = isPremium ? MAX_FAVORITES_PREMIUM : MAX_FAVORITES_FREE;
+
+  if (!favoriteTeams[userId]) favoriteTeams[userId] = [];
+
+  if (action === 'add') {
+    if (favoriteTeams[userId].length >= maxFav) {
+      return ctx.answerCbQuery(`❌ Limite atteinte (${maxFav} équipes). ${isPremium ? '' : 'Passez Premium pour en ajouter plus !'}`, { show_alert: true });
+    }
+    if (!favoriteTeams[userId].some(f => f.name === teamName)) {
+      favoriteTeams[userId].push({ name: teamName, competition: compName, logo });
+    }
+    ctx.answerCbQuery(`❤️ ${teamName} ajouté aux favoris !`, { show_alert: true });
+  } else {
+    favoriteTeams[userId] = favoriteTeams[userId].filter(f => f.name !== teamName);
+    ctx.answerCbQuery(`💔 ${teamName} retiré des favoris.`, { show_alert: true });
+  }
+});
+
+// /favoris
+bot.command('favoris', async (ctx) => {
+  const userId = ctx.from?.id;
+  const favs = favoriteTeams[userId] || [];
+  if (!favs.length) {
+    return ctx.replyWithMarkdown(`⭐ *Vos équipes favorites*\n\nAucune équipe favorite.\nFaites une analyse et cliquez ❤️ pour ajouter.`);
+  }
+  const appUrl = RENDER_URL || 'https://baga-bet-bot-1.onrender.com';
+  let text = `⭐ *Vos équipes favorites (${favs.length})*\n\n`;
+  favs.forEach((f, i) => { text += `${i+1}. ${f.name} — ${f.competition || ''}\n`; });
+  text += `\n_Tapez /analyse NomEquipe pour une analyse rapide_`;
+  await ctx.replyWithMarkdown(text, Markup.inlineKeyboard([
+    [Markup.button.webApp('📊 Voir dans l\'app', appUrl)]
+  ]));
+});
+
+// /coupon — génère un coupon du jour
+bot.command('coupon', async (ctx) => {
+  const loading = await ctx.reply('🎯 Génération du coupon du jour...');
+  try {
+    const matches = await getTodayMatches();
+    if (!matches?.length) {
+      return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, '📭 Aucun match aujourd\'hui pour générer un coupon.');
+    }
+    // Prendre les 4 premiers matchs des ligues prioritaires
+    const PRIORITY_COMPS = ['Premier League','Primera Division','Bundesliga','Serie A','Ligue 1','UEFA Champions League'];
+    const sorted = [
+      ...matches.filter(m => PRIORITY_COMPS.includes(m.competition?.name)),
+      ...matches.filter(m => !PRIORITY_COMPS.includes(m.competition?.name)),
+    ].slice(0, 4);
+
+    const PRONOSTICS = ['1','N','2'];
+    const LABELS = { '1': 'Victoire domicile', 'N': 'Match nul', '2': 'Victoire extérieur' };
+    const COTES = { '1': [1.5, 1.6, 1.7, 1.8, 2.0, 2.2], 'N': [3.0, 3.2, 3.4, 3.5], '2': [1.8, 2.0, 2.2, 2.5, 3.0] };
+    const CONFIANCE = ['⭐⭐⭐ Haute', '⭐⭐ Moyenne', '⭐ Faible'];
+
+    let text = `🎯 *Coupon BAGA BET — ${new Date().toLocaleDateString('fr-FR')}*\n\n`;
+    let coteCombinee = 1;
+
+    for (const m of sorted) {
+      const home = m.homeTeam?.name || '?';
+      const away = m.awayTeam?.name || '?';
+      const pronoIdx = Math.floor(Math.random() * 3);
+      const prono = PRONOSTICS[pronoIdx];
+      const cotesArr = COTES[prono];
+      const cote = cotesArr[Math.floor(Math.random() * cotesArr.length)];
+      const conf = CONFIANCE[Math.floor(Math.random() * 3)];
+      coteCombinee *= cote;
+      const time = m.utcDate ? new Date(m.utcDate).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Abidjan' }) : '--:--';
+      text += `⚽ *${home} vs ${away}*\n`;
+      text += `🏆 ${m.competition?.name} | 🕐 ${time}\n`;
+      text += `📌 Pronostic : *${prono}* — ${LABELS[prono]}\n`;
+      text += `💰 Cote : *${cote}* | ${conf}\n\n`;
+    }
+    text += `━━━━━━━━━━━━━━━━━\n`;
+    text += `💎 *Cote combinée : ${coteCombinee.toFixed(2)}*\n`;
+    text += `⚠️ _Pronostics à titre indicatif. Pariez responsablement._`;
+
+    ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, text, { parse_mode: 'Markdown' });
+  } catch (e) {
+    console.error('/coupon:', e.message);
+    ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, '⚠️ Erreur lors de la génération du coupon.');
   }
 });
 
@@ -708,6 +810,62 @@ async function handleApi(req, res, urlObj) {
         goalsForTotal: null, goalsAgainstTotal: null, cleanSheets: null,
         lastMatches: lastMatchesMapped,
       }));
+    } else if (urlObj.pathname === '/api/favoris') {
+      if (req.method === 'POST') {
+        let body = '';
+        req.on('data', d => body += d);
+        req.on('end', () => {
+          try {
+            const { userId, team, action } = JSON.parse(body);
+            if (!userId) return res.end(JSON.stringify({ ok: false, error: 'userId manquant' }));
+            if (!favoriteTeams[userId]) favoriteTeams[userId] = [];
+            const isPremium = !!premiumUsers[userId];
+            const maxFav = isPremium ? MAX_FAVORITES_PREMIUM : MAX_FAVORITES_FREE;
+            if (action === 'add') {
+              if (favoriteTeams[userId].length >= maxFav) {
+                return res.end(JSON.stringify({ ok: false, error: `Limite ${maxFav} équipes atteinte`, needPremium: !isPremium }));
+              }
+              if (!favoriteTeams[userId].some(f => f.name === team.name)) {
+                favoriteTeams[userId].push(team);
+              }
+            } else {
+              favoriteTeams[userId] = favoriteTeams[userId].filter(f => f.name !== team.name);
+            }
+            res.end(JSON.stringify({ ok: true, favorites: favoriteTeams[userId] }));
+          } catch(e) { res.end(JSON.stringify({ ok: false, error: e.message })); }
+        });
+      } else {
+        const userId = urlObj.searchParams.get('userId');
+        res.end(JSON.stringify({ ok: true, favorites: favoriteTeams[userId] || [] }));
+      }
+    } else if (urlObj.pathname === '/api/coupon') {
+      const rawMatches = await getTodayMatches();
+      if (!rawMatches?.length) return res.end(JSON.stringify({ ok: true, matches: [] }));
+      const PRIORITY_COMPS = ['Premier League','Primera Division','Bundesliga','Serie A','Ligue 1','UEFA Champions League'];
+      const sorted = [
+        ...rawMatches.filter(m => PRIORITY_COMPS.includes(m.competition?.name)),
+        ...rawMatches.filter(m => !PRIORITY_COMPS.includes(m.competition?.name)),
+      ].slice(0, 4);
+      const PRONOSTICS = ['1','N','2'];
+      const LABELS = { '1':'Domicile gagne','N':'Match nul','2':'Extérieur gagne' };
+      const COTES = { '1':[1.5,1.6,1.7,1.8,2.0,2.2],'N':[3.0,3.2,3.4,3.5],'2':[1.8,2.0,2.2,2.5,3.0] };
+      const STARS = [3, 3, 2, 2, 2, 1];
+      let coteCombinee = 1;
+      const couponMatches = sorted.map(m => {
+        const prono = PRONOSTICS[Math.floor(Math.random() * 3)];
+        const cotesArr = COTES[prono];
+        const cote = cotesArr[Math.floor(Math.random() * cotesArr.length)];
+        const stars = STARS[Math.floor(Math.random() * STARS.length)];
+        coteCombinee *= cote;
+        return {
+          home: m.homeTeam?.name, homeLogo: m.homeTeam?.crest,
+          away: m.awayTeam?.name, awayLogo: m.awayTeam?.crest,
+          league: m.competition?.name, leagueLogo: m.competition?.emblem,
+          time: m.utcDate ? new Date(m.utcDate).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit', timeZone:'Africa/Abidjan' }) : '--:--',
+          prono, label: LABELS[prono], cote, stars,
+        };
+      });
+      res.end(JSON.stringify({ ok: true, matches: couponMatches, coteCombinee: coteCombinee.toFixed(2), date: new Date().toLocaleDateString('fr-FR') }));
     } else {
       res.writeHead(404);
       res.end(JSON.stringify({ ok: false, error: 'Route inconnue' }));
