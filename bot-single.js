@@ -251,15 +251,22 @@ bot.command('statistiques', async (ctx) => {
     if (!teams?.length) return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, `❌ Équipe "${args}" introuvable.`);
 
     const team = teams[0].team;
-    const season = new Date().getMonth() >= 6 ? new Date().getFullYear() : new Date().getFullYear() - 1;
-    const leaguesRes2 = await apiGet('/leagues', { team: team.id, season, type: 'League' });
-    const league2 = leaguesRes2?.[0]?.league;
-    if (!league2) return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, `❌ Aucune ligue trouvée pour "${args}" en ${season}.`);
-    const res = await apiGet('/teams/statistics', { team: team.id, season, league: league2.id });
-    const s = Array.isArray(res) ? res?.[0] : res;
-    if (!s) return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, `❌ Aucune statistique pour "${args}".`);
+    let league2 = null, season2 = null;
+    for (let yr = new Date().getFullYear(); yr >= new Date().getFullYear() - 2; yr--) {
+      const lr = await apiGet('/leagues', { team: team.id, season: yr, type: 'League' });
+      if (lr?.[0]?.league) { league2 = lr[0].league; season2 = yr; break; }
+    }
+    if (!league2) return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, `❌ Aucune ligue trouvée pour "${args}".`);
+    let res = await apiGet('/teams/statistics', { team: team.id, season: season2, league: league2.id });
+    let s = Array.isArray(res) ? res?.[0] : res;
+    if (!s?.fixtures?.played?.total) {
+      const res2 = await apiGet('/teams/statistics', { team: team.id, season: season2 - 1, league: league2.id });
+      const s2 = Array.isArray(res2) ? res2?.[0] : res2;
+      if (s2?.fixtures?.played?.total) { s = s2; season2 = season2 - 1; }
+    }
+    if (!s?.fixtures?.played?.total) return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, `❌ Aucune statistique pour "${args}".`);
 
-    const text = `📈 *${team.name}* — Saison ${season}\n🏆 ${s.league?.name}\n\n🎮 *Matchs*\n• Total : ${s.fixtures?.played?.total ?? 'N/A'}\n• Victoires : ${s.fixtures?.wins?.total ?? 'N/A'}\n• Nuls : ${s.fixtures?.draws?.total ?? 'N/A'}\n• Défaites : ${s.fixtures?.loses?.total ?? 'N/A'}\n\n⚽ *Buts*\n• Marqués : ${s.goals?.for?.total?.total ?? 'N/A'} (${s.goals?.for?.average?.total ?? 'N/A'}/match)\n• Encaissés : ${s.goals?.against?.total?.total ?? 'N/A'} (${s.goals?.against?.average?.total ?? 'N/A'}/match)\n\n🧤 Clean sheets : ${s.clean_sheet?.total ?? 'N/A'}\n\n⚠️ _Statistiques à titre informatif._`;
+    const text = `📈 *${team.name}* — Saison ${season2}\n🏆 ${s.league?.name}\n\n🎮 *Matchs*\n• Total : ${s.fixtures?.played?.total ?? 'N/A'}\n• Victoires : ${s.fixtures?.wins?.total ?? 'N/A'}\n• Nuls : ${s.fixtures?.draws?.total ?? 'N/A'}\n• Défaites : ${s.fixtures?.loses?.total ?? 'N/A'}\n\n⚽ *Buts*\n• Marqués : ${s.goals?.for?.total?.total ?? 'N/A'} (${s.goals?.for?.average?.total ?? 'N/A'}/match)\n• Encaissés : ${s.goals?.against?.total?.total ?? 'N/A'} (${s.goals?.against?.average?.total ?? 'N/A'}/match)\n\n🧤 Clean sheets : ${s.clean_sheet?.total ?? 'N/A'}\n\n⚠️ _Statistiques à titre informatif._`;
     await ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, text, { parse_mode: 'Markdown' });
   } catch (e) {
     console.error(`/statistiques: ${e.message}`);
