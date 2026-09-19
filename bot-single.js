@@ -89,22 +89,62 @@ async function apiGet(endpoint, params = {}) {
   }
 }
 
-// Chercher une équipe par nom dans toutes les compétitions gratuites
-async function findTeam(name) {
-  const nameLower = name.toLowerCase();
+// Alias pour les noms courants
+const TEAM_ALIASES = {
+  'barca': 'fc barcelona', 'barça': 'fc barcelona', 'barcelona': 'fc barcelona',
+  'psg': 'paris', 'paris sg': 'paris',
+  'real': 'real madrid', 'madrid': 'real madrid',
+  'man city': 'manchester city', 'city': 'manchester city',
+  'man utd': 'manchester united', 'man united': 'manchester united', 'united': 'manchester united',
+  'arsenal': 'arsenal', 'gunners': 'arsenal',
+  'chelsea': 'chelsea', 'liverpool': 'liverpool', 'spurs': 'tottenham',
+  'juventus': 'juventus', 'juve': 'juventus',
+  'milan': 'ac milan', 'inter': 'inter', 'roma': 'roma', 'napoli': 'napoli',
+  'bayern': 'bayern', 'dortmund': 'dortmund', 'bvb': 'dortmund',
+  'atletico': 'atlético', 'atletico madrid': 'atlético', 'atleti': 'atlético',
+  'sevilla': 'sevilla', 'betis': 'betis', 'valencia': 'valencia',
+  'ajax': 'ajax', 'psv': 'psv', 'feyenoord': 'feyenoord',
+  'porto': 'porto', 'benfica': 'benfica', 'sporting': 'sporting',
+};
+
+// Cache des équipes (rechargé toutes les 24h)
+const teamsCache = { data: null, loadedAt: 0 };
+
+async function loadAllTeams() {
+  if (teamsCache.data && Date.now() - teamsCache.loadedAt < 24 * 60 * 60 * 1000) {
+    return teamsCache.data;
+  }
+  const allTeams = [];
   for (const comp of FD_COMPETITIONS) {
     try {
       const data = await apiGet(`/competitions/${comp}/teams`);
-      if (!data?.teams) continue;
-      const found = data.teams.find(t =>
-        t.name.toLowerCase().includes(nameLower) ||
-        t.shortName?.toLowerCase().includes(nameLower) ||
-        t.tla?.toLowerCase().includes(nameLower)
-      );
-      if (found) return { team: found, competition: data.competition };
+      if (data?.teams) {
+        for (const t of data.teams) {
+          allTeams.push({ team: t, competition: data.competition });
+        }
+      }
+      await new Promise(r => setTimeout(r, 200)); // éviter le rate limit
     } catch(e) { continue; }
   }
-  return null;
+  teamsCache.data = allTeams;
+  teamsCache.loadedAt = Date.now();
+  console.log(`Cache équipes chargé: ${allTeams.length} équipes`);
+  return allTeams;
+}
+
+// Chercher une équipe par nom dans toutes les compétitions gratuites
+async function findTeam(name) {
+  const nameLower = name.toLowerCase().trim();
+  const resolved = TEAM_ALIASES[nameLower] || nameLower;
+  const allTeams = await loadAllTeams();
+  const found = allTeams.find(({ team: t }) =>
+    t.name.toLowerCase().includes(resolved) ||
+    t.shortName?.toLowerCase().includes(resolved) ||
+    t.tla?.toLowerCase() === resolved ||
+    t.name.toLowerCase().includes(nameLower) ||
+    t.shortName?.toLowerCase().includes(nameLower)
+  );
+  return found || null;
 }
 
 // Matchs du jour toutes compétitions gratuites
