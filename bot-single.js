@@ -581,10 +581,21 @@ bot.catch((err, ctx) => {
 // Serveur HTTP pour satisfaire Render Web Service
 const http = require('http');
 const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => {
+const RENDER_URL = process.env.RENDER_EXTERNAL_URL || '';
+const server = http.createServer((req, res) => {
   res.writeHead(200);
   res.end('BAGA BET BOT actif');
-}).listen(PORT, () => console.log(`Serveur HTTP sur port ${PORT}`));
+});
+server.listen(PORT, () => {
+  console.log(`Serveur HTTP sur port ${PORT}`);
+  // Auto-ping toutes les 10 minutes pour éviter l'endormissement
+  if (RENDER_URL) {
+    setInterval(() => {
+      http.get(RENDER_URL).on('error', () => {});
+      console.log('Ping keep-alive envoyé');
+    }, 10 * 60 * 1000);
+  }
+});
 
 // Démarrage
 bot.launch().then(() => {
