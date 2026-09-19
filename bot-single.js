@@ -187,13 +187,30 @@ bot.command('analyse', async (ctx) => {
     if (!teams?.length) return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, `❌ Équipe "${args}" introuvable.`);
 
     const team = teams[0].team;
-    const season = new Date().getMonth() >= 6 ? new Date().getFullYear() : new Date().getFullYear() - 1;
+
+    // Trouver la ligue courante, avec fallback sur saison précédente si pas de données
+    let mainLeague = null, season = null;
+    for (let yr = new Date().getFullYear(); yr >= new Date().getFullYear() - 2; yr--) {
+      const lr = await apiGet('/leagues', { team: team.id, season: yr, type: 'League' });
+      if (lr?.[0]?.league) { mainLeague = lr[0].league; season = yr; break; }
+    }
+    if (!mainLeague) {
+      return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, `❌ Aucune ligue trouvée pour "${args}".`);
+    }
+
     const [statsRes, fixturesRes] = await Promise.all([
-      apiGet('/teams/statistics', { team: team.id, season }),
+      apiGet('/teams/statistics', { team: team.id, season, league: mainLeague.id }),
       apiGet('/fixtures', { team: team.id, season, last: 5 }),
     ]);
 
-    const stats = statsRes?.[0];
+    let stats = Array.isArray(statsRes) ? statsRes?.[0] : statsRes;
+    // Si pas de matchs joués, essayer saison précédente
+    if (!stats?.fixtures?.played?.total && season > new Date().getFullYear() - 2) {
+      const prevSeason = season - 1;
+      const prevStats = await apiGet('/teams/statistics', { team: team.id, season: prevSeason, league: mainLeague.id });
+      const ps = Array.isArray(prevStats) ? prevStats?.[0] : prevStats;
+      if (ps?.fixtures?.played?.total) { stats = ps; season = prevSeason; }
+    }
     const form = (stats?.form || '').split('').slice(-5).map(r => r==='W'?'✅':r==='D'?'🟡':'❌').join(' ') || 'N/A';
     const avgFor = parseFloat(stats?.goals?.for?.average?.total)?.toFixed(1) || 'N/A';
     const avgAga = parseFloat(stats?.goals?.against?.average?.total)?.toFixed(1) || 'N/A';
@@ -235,8 +252,11 @@ bot.command('statistiques', async (ctx) => {
 
     const team = teams[0].team;
     const season = new Date().getMonth() >= 6 ? new Date().getFullYear() : new Date().getFullYear() - 1;
-    const res = await apiGet('/teams/statistics', { team: team.id, season });
-    const s = res?.[0];
+    const leaguesRes2 = await apiGet('/leagues', { team: team.id, season, type: 'League' });
+    const league2 = leaguesRes2?.[0]?.league;
+    if (!league2) return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, `❌ Aucune ligue trouvée pour "${args}" en ${season}.`);
+    const res = await apiGet('/teams/statistics', { team: team.id, season, league: league2.id });
+    const s = Array.isArray(res) ? res?.[0] : res;
     if (!s) return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, `❌ Aucune statistique pour "${args}".`);
 
     const text = `📈 *${team.name}* — Saison ${season}\n🏆 ${s.league?.name}\n\n🎮 *Matchs*\n• Total : ${s.fixtures?.played?.total ?? 'N/A'}\n• Victoires : ${s.fixtures?.wins?.total ?? 'N/A'}\n• Nuls : ${s.fixtures?.draws?.total ?? 'N/A'}\n• Défaites : ${s.fixtures?.loses?.total ?? 'N/A'}\n\n⚽ *Buts*\n• Marqués : ${s.goals?.for?.total?.total ?? 'N/A'} (${s.goals?.for?.average?.total ?? 'N/A'}/match)\n• Encaissés : ${s.goals?.against?.total?.total ?? 'N/A'} (${s.goals?.against?.average?.total ?? 'N/A'}/match)\n\n🧤 Clean sheets : ${s.clean_sheet?.total ?? 'N/A'}\n\n⚠️ _Statistiques à titre informatif._`;
