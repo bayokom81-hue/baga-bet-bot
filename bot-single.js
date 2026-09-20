@@ -171,20 +171,38 @@ async function findTeam(name) {
   const nameLower = name.toLowerCase().trim();
   const resolved = TEAM_ALIASES[nameLower] || nameLower;
 
-  // Si le cache est déjà chargé, chercher dedans
+  // 1. Chercher dans le cache si disponible
   if (teamsCache.data?.length) {
     const found = teamsCache.data.find(({ team: t }) => matchTeamName(t, nameLower, resolved));
     if (found) return found;
   }
 
-  // Sinon chercher directement dans les compétitions une par une
-  for (const comp of FD_COMPETITIONS) {
+  // 2. Essayer l'endpoint de recherche global (disponible sur free tier)
+  try {
+    const data = await apiGet('/teams', { name });
+    if (data?.teams?.length) {
+      const t = data.teams[0];
+      // Trouver la compétition associée
+      const compEntry = teamsCache.data?.find(e => e.team.id === t.id);
+      return { team: t, competition: compEntry?.competition || null };
+    }
+  } catch(e) {}
+
+  // 3. Chercher seulement dans les 3 grandes compétitions (PL, PD, CL) sans attendre tout le cache
+  const quickComps = ['PL', 'PD', 'CL'];
+  for (const comp of quickComps) {
+    // Vérifier si déjà dans le cache partiel
+    const cached = teamsCache.data?.filter(e => e.competition?.code === comp);
+    if (cached?.length) {
+      const found = cached.find(({ team: t }) => matchTeamName(t, nameLower, resolved));
+      if (found) return found;
+      continue;
+    }
     try {
       const data = await apiGet(`/competitions/${comp}/teams`);
       if (data?.teams) {
-        // Stocker dans le cache partiel
+        if (!teamsCache.data) teamsCache.data = [];
         for (const t of data.teams) {
-          if (!teamsCache.data) teamsCache.data = [];
           if (!teamsCache.data.find(e => e.team.id === t.id)) {
             teamsCache.data.push({ team: t, competition: data.competition });
           }
@@ -194,6 +212,14 @@ async function findTeam(name) {
       }
     } catch(e) { continue; }
   }
+
+  // 4. Si toujours pas trouvé, attendre le cache complet
+  if (!teamsCache.data || teamsCache.data.length < 50) {
+    await loadAllTeams();
+    const found = teamsCache.data?.find(({ team: t }) => matchTeamName(t, nameLower, resolved));
+    if (found) return found;
+  }
+
   return null;
 }
 
