@@ -527,8 +527,38 @@ async function doAnalyse() {
       premiumHtml = `<div class="premium-lock">
         <div class="premium-lock-icon">💎</div>
         <div style="font-weight:800;font-size:14px;margin-bottom:6px">Fonctionnalités Premium</div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Prochain match · Dom/Extérieur · H2H</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Prédiction IA · Prochain match · H2H · Dom/Ext</div>
         <button class="plan-btn" style="margin:0" onclick="showPage('premium')">Passer Premium</button>
+      </div>`;
+    }
+
+    // Prédiction IA (visible pour tous, texte LLM Premium only)
+    const pred = d.prediction;
+    let predHtml = '';
+    if (pred) {
+      const { pct, aiText, opponent } = pred;
+      const topResult = pct.home >= pct.away && pct.home >= pct.draw ? `Victoire ${d.team.name}` : pct.away >= pct.home && pct.away >= pct.draw ? `Victoire ${opponent||'Adversaire'}` : 'Match nul';
+      predHtml = `<div class="card" style="background:linear-gradient(135deg,#0a0d1a,#0d1022);border-color:#3b82f655">
+        <div class="card-title" style="color:#60a5fa">🤖 Prédiction IA${opponent ? ` — vs ${opponent}` : ''}</div>
+        <div style="display:flex;gap:6px;margin-bottom:14px">
+          <div style="flex:1;text-align:center;background:#00e67615;border:1px solid #00e67630;border-radius:10px;padding:10px 4px">
+            <div style="font-size:20px;font-weight:900;color:var(--win)">${pct.home}%</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;max-width:70px;margin:2px auto 0">${d.team.name.split(' ')[0]}</div>
+          </div>
+          <div style="flex:1;text-align:center;background:#ffb74d15;border:1px solid #ffb74d30;border-radius:10px;padding:10px 4px">
+            <div style="font-size:20px;font-weight:900;color:var(--draw)">${pct.draw}%</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Nul</div>
+          </div>
+          <div style="flex:1;text-align:center;background:#ef535015;border:1px solid #ef535030;border-radius:10px;padding:10px 4px">
+            <div style="font-size:20px;font-weight:900;color:var(--lose)">${pct.away}%</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;max-width:70px;margin:2px auto 0">${opponent ? opponent.split(' ')[0] : 'Adv.'}</div>
+          </div>
+        </div>
+        <div style="background:#1e3a5f;border-radius:8px;padding:8px 12px;margin-bottom:${aiText?'10px':'0'};display:flex;align-items:center;gap:8px">
+          <span style="font-size:16px">🎯</span>
+          <span style="font-size:13px;font-weight:700;color:#93c5fd">Pronostic : ${topResult}</span>
+        </div>
+        ${aiText ? `<div style="font-size:13px;color:var(--muted2);line-height:1.6;border-top:1px solid var(--border);padding-top:10px">${aiText}</div>` : isPremium ? '' : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:4px 0">💎 Analyse IA complète avec Premium</div>`}
       </div>`;
     }
 
@@ -555,6 +585,7 @@ async function doAnalyse() {
         <div class="goals-row"><span class="goals-label">Encaissés</span><div class="goals-bar"><div class="goals-fill against" style="width:${pctAga}%"></div></div><span class="goals-val" style="color:var(--lose)">${d.goalsAgainst}/m</span></div>
       </div>
       ${lastHtml ? `<div class="card"><div class="card-title">📋 Derniers matchs</div>${lastHtml}</div>` : ''}
+      ${predHtml}
       ${premiumHtml}
       <button class="fav-btn ${isFav?'is-fav':''}" onclick="toggleFavorite()" id="fav-btn">
         ${isFav ? '💔 Retirer des favoris' : '❤️ Ajouter aux favoris'}

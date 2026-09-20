@@ -5,6 +5,7 @@ const crypto = require('crypto');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const FOOTBALL_API_KEY = process.env.FOOTBALL_API_KEY || '';
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.trim())).filter(Boolean);
 const DEMO_MODE = !FOOTBALL_API_KEY;
 
@@ -314,6 +315,75 @@ bot.command('matchs', async (ctx) => {
     ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, '⚠️ Erreur. Réessayez dans quelques instants.');
   }
 });
+
+// ── Prédiction IA ─────────────────────────────────────────────────
+
+function computePredictionScore(stats) {
+  // Score règles : retourne { home, draw, away } en pourcentages
+  const form = stats.form || [];
+  const formScore = (team) => {
+    return team.reduce((s, r) => s + (r === 'W' ? 3 : r === 'D' ? 1 : 0), 0);
+  };
+
+  const homeForm = formScore(stats.homeForm || []);
+  const awayForm = formScore(stats.awayForm || []);
+  const homeGoalsFor = parseFloat(stats.homeGoalsFor) || 1;
+  const homeGoalsAgainst = parseFloat(stats.homeGoalsAgainst) || 1;
+  const awayGoalsFor = parseFloat(stats.awayGoalsFor) || 1;
+  const awayGoalsAgainst = parseFloat(stats.awayGoalsAgainst) || 1;
+
+  // Attaque vs Défense
+  const homeAttack = homeGoalsFor / Math.max(awayGoalsAgainst, 0.5);
+  const awayAttack = awayGoalsFor / Math.max(homeGoalsAgainst, 0.5);
+
+  // H2H bonus
+  let h2hHome = 0, h2hAway = 0;
+  for (const m of (stats.h2h || [])) {
+    if (m.goalsFor > m.goalsAgainst) h2hHome += 1;
+    else if (m.goalsFor < m.goalsAgainst) h2hAway += 1;
+  }
+
+  // Score brut
+  let rawHome = homeForm * 1.2 + homeAttack * 3 + h2hHome * 1.5 + 3; // +3 avantage domicile
+  let rawDraw = 5;
+  let rawAway = awayForm * 1.0 + awayAttack * 3 + h2hAway * 1.5;
+
+  const total = rawHome + rawDraw + rawAway;
+  return {
+    home: Math.round((rawHome / total) * 100),
+    draw: Math.round((rawDraw / total) * 100),
+    away: Math.round((rawAway / total) * 100),
+  };
+}
+
+async function generateAIText(homeTeam, awayTeam, pct, stats) {
+  if (!GROQ_API_KEY) return null;
+  const prompt = `Tu es un analyste football expert. Donne une courte analyse de prédiction (4-5 phrases max) pour ce match en français :
+
+Match : ${homeTeam} vs ${awayTeam}
+Probabilités calculées : Victoire ${homeTeam} ${pct.home}% | Nul ${pct.draw}% | Victoire ${awayTeam} ${pct.away}%
+Forme ${homeTeam} (5 derniers) : ${(stats.homeForm||[]).join(' ')}
+Forme ${awayTeam} (5 derniers) : ${(stats.awayForm||[]).join(' ')}
+Buts/match ${homeTeam} : ${stats.homeGoalsFor} marqués, ${stats.homeGoalsAgainst} encaissés
+Buts/match ${awayTeam} : ${stats.awayGoalsFor} marqués, ${stats.awayGoalsAgainst} encaissés
+
+Sois direct, concis et professionnel. Commence par "🔮 Analyse :" et termine par une recommandation claire.`;
+
+  try {
+    const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+      model: 'llama3-8b-8192',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 250,
+      temperature: 0.7,
+    }, {
+      headers: { Authorization: `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+      timeout: 10000,
+    });
+    return r.data?.choices?.[0]?.message?.content?.trim() || null;
+  } catch(e) {
+    return null;
+  }
+}
 
 // Helper: analyse d'équipe avec football-data.org
 async function getTeamAnalysis(teamName) {
@@ -1052,9 +1122,24 @@ async function handleApi(req, res, urlObj) {
       const userId = urlObj.searchParams.get('userId');
       const isPremium = userId ? !!premiumUsers[userId] : false;
       let extra = {};
+      let pData = null;
       if (isPremium) {
-        const pData = await getTeamAnalysisPremium(teamName);
+        pData = await getTeamAnalysisPremium(teamName);
         if (pData) extra = { homeRecord: pData.homeRecord, awayRecord: pData.awayRecord, nextMatch: pData.nextMatch, h2h: pData.h2h };
+      }
+      // Prédiction IA (règles + LLM si prochain match connu)
+      const nextOpp = pData?.nextMatch?.opponent || 'Adversaire inconnu';
+      const predStats = {
+        homeForm: form,
+        awayForm: [],
+        homeGoalsFor: avgFor, homeGoalsAgainst: avgAga,
+        awayGoalsFor: 1.2, awayGoalsAgainst: 1.3,
+        h2h: extra.h2h || [],
+      };
+      const predPct = computePredictionScore(predStats);
+      let aiText = null;
+      if (isPremium && pData?.nextMatch) {
+        aiText = await generateAIText(team.name, nextOpp, predPct, predStats);
       }
       res.end(JSON.stringify({
         ok: true,
@@ -1066,6 +1151,7 @@ async function handleApi(req, res, urlObj) {
         played, wins, draws, loses: losses,
         goalsFor: avgFor, goalsAgainst: avgAga,
         lastMatches: lastMatchesMapped,
+        prediction: { pct: predPct, aiText, opponent: pData?.nextMatch ? nextOpp : null },
         ...extra,
       }));
     } else if (urlObj.pathname === '/api/favoris') {
