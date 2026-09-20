@@ -90,12 +90,23 @@ const api = axios.create({
   headers: { 'X-Auth-Token': FOOTBALL_API_KEY },
 });
 
+// Throttle : max 8 req/min (1 toutes les 7.5s) pour rester sous la limite de 10/min
+let lastApiCall = 0;
 async function apiGet(endpoint, params = {}) {
+  const now = Date.now();
+  const wait = Math.max(0, 7500 - (now - lastApiCall));
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  lastApiCall = Date.now();
   try {
     const r = await api.get(endpoint, { params });
     return r.data;
   } catch (e) {
-    console.error(`API [${endpoint}]: ${e.response?.data?.message || e.message}`);
+    const msg = e.response?.data?.message || e.message;
+    console.error(`API [${endpoint}]: ${msg}`);
+    // Si rate limit, attendre 15s avant prochaine requête
+    if (e.response?.status === 429) {
+      lastApiCall = Date.now() + 15000;
+    }
     return null;
   }
 }
@@ -134,7 +145,7 @@ async function loadAllTeams() {
           allTeams.push({ team: t, competition: data.competition });
         }
       }
-      await new Promise(r => setTimeout(r, 200)); // éviter le rate limit
+      // throttle géré par apiGet (7.5s entre chaque requête)
     } catch(e) { continue; }
   }
   teamsCache.data = allTeams;

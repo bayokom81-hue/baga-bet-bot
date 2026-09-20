@@ -360,7 +360,11 @@ async function loadMatchs() {
   try {
     const res = await fetch(BASE + '/api/matchs');
     const data = await res.json();
-    el.innerHTML = buildMatchCards(data.matches, false);
+    if (!data.matches?.length) {
+      el.innerHTML = `<div class="empty"><span class="big">😴</span>Pas de match aujourd'hui dans les ligues disponibles.<br><br><button class="search-btn" style="max-width:220px;margin:0 auto;display:block" onclick="switchMatchTab('upcoming')">🔜 Voir les matchs à venir</button></div>`;
+    } else {
+      el.innerHTML = buildMatchCards(data.matches, false);
+    }
     matchTabLoaded.today = true;
   } catch(e) {
     el.innerHTML = `<div class="empty">⚠️ Erreur de chargement</div>`;
