@@ -4,13 +4,9 @@ const axios = require('axios');
 const crypto = require('crypto');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const FOOTBALL_API_KEY = process.env.FOOTBALL_API_KEY || '';
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.trim())).filter(Boolean);
-const DEMO_MODE = !FOOTBALL_API_KEY;
-
-// Compétitions disponibles sur le plan gratuit football-data.org
-const FD_COMPETITIONS = ['PL','PD','BL1','SA','FL1','CL','EC','WC','PPL','DED','BSA'];
+const DEMO_MODE = false; // TheSportsDB est gratuit, pas besoin de clé
 
 // ── Jemenipay ─────────────────────────────────────────────────────
 const JEMENI_API_KEY = process.env.JEMENI_API_KEY || '';
@@ -87,156 +83,89 @@ let todayCouponCache = { date: null, data: null };
 
 if (!BOT_TOKEN) { console.error('BOT_TOKEN manquant'); process.exit(1); }
 
-// ── API football-data.org v4 ──────────────────────────────────────
-const api = axios.create({
-  baseURL: 'https://api.football-data.org/v4',
-  timeout: 15000,
-  headers: { 'X-Auth-Token': FOOTBALL_API_KEY },
-});
+// ── API TheSportsDB (gratuit, sans clé) ──────────────────────────
+const TSDB = 'https://www.thesportsdb.com/api/v1/json/3';
 
-// Throttle : max 8 req/min (1 toutes les 7.5s) pour rester sous la limite de 10/min
-let lastApiCall = 0;
-async function apiGet(endpoint, params = {}) {
-  const now = Date.now();
-  const wait = Math.max(0, 7500 - (now - lastApiCall));
-  if (wait > 0) await new Promise(r => setTimeout(r, wait));
-  lastApiCall = Date.now();
+async function tsdb(endpoint) {
   try {
-    const r = await api.get(endpoint, { params });
-    return r.data;
-  } catch (e) {
-    const msg = e.response?.data?.message || e.message;
-    console.error(`API [${endpoint}]: ${msg}`);
-    // Si rate limit, attendre 15s avant prochaine requête
-    if (e.response?.status === 429) {
-      lastApiCall = Date.now() + 15000;
-    }
-    return null;
-  }
-}
-
-// Alias pour les noms courants
-const TEAM_ALIASES = {
-  'barca': 'fc barcelona', 'barça': 'fc barcelona', 'barcelona': 'fc barcelona',
-  'psg': 'paris', 'paris sg': 'paris',
-  'real': 'real madrid', 'madrid': 'real madrid',
-  'man city': 'manchester city', 'city': 'manchester city',
-  'man utd': 'manchester united', 'man united': 'manchester united', 'united': 'manchester united',
-  'arsenal': 'arsenal', 'gunners': 'arsenal',
-  'chelsea': 'chelsea', 'liverpool': 'liverpool', 'spurs': 'tottenham',
-  'juventus': 'juventus', 'juve': 'juventus',
-  'milan': 'ac milan', 'inter': 'inter', 'roma': 'roma', 'napoli': 'napoli',
-  'bayern': 'bayern', 'dortmund': 'dortmund', 'bvb': 'dortmund',
-  'atletico': 'atlético', 'atletico madrid': 'atlético', 'atleti': 'atlético',
-  'sevilla': 'sevilla', 'betis': 'betis', 'valencia': 'valencia',
-  'ajax': 'ajax', 'psv': 'psv', 'feyenoord': 'feyenoord',
-  'porto': 'porto', 'benfica': 'benfica', 'sporting': 'sporting',
-};
-
-// Cache des équipes (rechargé toutes les 24h)
-const teamsCache = { data: null, loadedAt: 0 };
-
-async function loadAllTeams() {
-  if (teamsCache.data && Date.now() - teamsCache.loadedAt < 24 * 60 * 60 * 1000) {
-    return teamsCache.data;
-  }
-  const allTeams = [];
-  for (const comp of FD_COMPETITIONS) {
-    try {
-      const data = await apiGet(`/competitions/${comp}/teams`);
-      if (data?.teams) {
-        for (const t of data.teams) {
-          allTeams.push({ team: t, competition: data.competition });
-        }
-      }
-      // throttle géré par apiGet (7.5s entre chaque requête)
-    } catch(e) { continue; }
-  }
-  teamsCache.data = allTeams;
-  teamsCache.loadedAt = Date.now();
-  console.log(`Cache équipes chargé: ${allTeams.length} équipes`);
-  return allTeams;
-}
-
-// Chercher une équipe par nom dans toutes les compétitions gratuites
-function matchTeamName(t, nameLower, resolved) {
-  return t.name.toLowerCase().includes(resolved) ||
-    t.shortName?.toLowerCase().includes(resolved) ||
-    t.tla?.toLowerCase() === resolved ||
-    t.name.toLowerCase().includes(nameLower) ||
-    t.shortName?.toLowerCase().includes(nameLower);
-}
-
-// Appel API sans throttle (pour la recherche rapide d'équipe)
-async function apiGetFast(endpoint, params = {}) {
-  try {
-    const r = await api.get(endpoint, { params });
+    const r = await axios.get(`${TSDB}/${endpoint}`, { timeout: 12000 });
     return r.data;
   } catch(e) {
+    console.error(`TSDB [${endpoint}]: ${e.message}`);
     return null;
   }
 }
 
-async function findTeam(name) {
-  const nameLower = name.toLowerCase().trim();
-  const resolved = TEAM_ALIASES[nameLower] || nameLower;
+// IDs des ligues TheSportsDB
+const TSDB_LEAGUES = [
+  { id: '4328', name: 'Premier League',     logo: 'https://www.thesportsdb.com/images/media/league/badge/i6o0kh1549879062.png' },
+  { id: '4335', name: 'La Liga',            logo: 'https://www.thesportsdb.com/images/media/league/badge/7onmyv1534768460.png' },
+  { id: '4331', name: 'Bundesliga',         logo: 'https://www.thesportsdb.com/images/media/league/badge/0j55yv1534764906.png' },
+  { id: '4332', name: 'Serie A',            logo: 'https://www.thesportsdb.com/images/media/league/badge/zkwyk11534768505.png' },
+  { id: '4334', name: 'Ligue 1',            logo: 'https://www.thesportsdb.com/images/media/league/badge/323yvv1534770164.png' },
+  { id: '4480', name: 'Champions League',   logo: 'https://www.thesportsdb.com/images/media/league/badge/qoYDXl1621338005.png' },
+  { id: '4337', name: 'Eredivisie',         logo: '' },
+  { id: '4344', name: 'Primeira Liga',      logo: '' },
+];
 
-  // 1. Chercher dans le cache si disponible
-  if (teamsCache.data?.length) {
-    const found = teamsCache.data.find(({ team: t }) => matchTeamName(t, nameLower, resolved));
-    if (found) return found;
-  }
-
-  // 2. Chercher dans toutes les compétitions en parallèle (sans throttle)
-  const results = await Promise.all(
-    FD_COMPETITIONS.map(comp => apiGetFast(`/competitions/${comp}/teams`))
-  );
-  if (!teamsCache.data) teamsCache.data = [];
-  for (const data of results) {
-    if (!data?.teams) continue;
-    for (const t of data.teams) {
-      if (!teamsCache.data.find(e => e.team.id === t.id)) {
-        teamsCache.data.push({ team: t, competition: data.competition });
-      }
-    }
-  }
-  teamsCache.loadedAt = Date.now();
-  const found = teamsCache.data.find(({ team: t }) => matchTeamName(t, nameLower, resolved));
-  return found || null;
-}
-
-// Cache matchs par compétition (2h TTL) — chargé en arrière-plan
+// Cache des matchs
 const matchesCache = {
   today: { data: [], loadedAt: 0, dateKey: '' },
   upcoming: { data: [], loadedAt: 0, dateKey: '' },
   loading: false,
 };
-const MATCH_COMPS = ['PL','PD','BL1','SA','FL1','CL','PPL','DED','BSA'];
+
+function tsdbMatchToNorm(m, leagueInfo) {
+  const isFinished = m.strStatus === 'Match Finished' || (m.intHomeScore !== null && m.intHomeScore !== '');
+  const isLive = ['1H','2H','HT','ET','PEN'].includes(m.strStatus);
+  const isScheduled = !isFinished && !isLive;
+  const dateStr = m.dateEvent || '';
+  const timeStr = m.strTime ? m.strTime.substring(0,5) : '--:--';
+  return {
+    home: m.strHomeTeam, homeLogo: m.strHomeTeamBadge || '',
+    away: m.strAwayTeam, awayLogo: m.strAwayTeamBadge || '',
+    scoreHome: isFinished||isLive ? m.intHomeScore : null,
+    scoreAway: isFinished||isLive ? m.intAwayScore : null,
+    time: timeStr,
+    date: dateStr,
+    status: isLive ? 'IN_PLAY' : isFinished ? 'FINISHED' : 'SCHEDULED',
+    league: leagueInfo?.name || m.strLeague || '',
+    leagueLogo: leagueInfo?.logo || '',
+  };
+}
 
 async function refreshMatchesCache() {
   if (matchesCache.loading) return;
   matchesCache.loading = true;
   try {
-    const today = new Date().toISOString().split('T')[0];
-    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
-    const in14 = new Date(); in14.setDate(in14.getDate()+14);
-    const dateFrom2 = tomorrow.toISOString().split('T')[0];
-    const dateTo2 = in14.toISOString().split('T')[0];
-
+    const todayStr = new Date().toISOString().split('T')[0];
     const todayAll = [], upcomingAll = [];
-    for (const comp of MATCH_COMPS) {
-      const data = await apiGet(`/competitions/${comp}/matches`, { dateFrom: today, dateTo: dateTo2 });
-      if (data?.matches?.length) {
-        for (const m of data.matches) {
-          const d = m.utcDate?.split('T')[0];
-          if (d === today) todayAll.push(m);
-          else if (d > today) upcomingAll.push(m);
+
+    const results = await Promise.all(
+      TSDB_LEAGUES.map(l => tsdb(`eventsnextleague.php?id=${l.id}`).then(d => ({ d, l })))
+    );
+    for (const { d, l } of results) {
+      for (const m of d?.events || []) {
+        const norm = tsdbMatchToNorm(m, l);
+        if (norm.date === todayStr) todayAll.push(norm);
+        else if (norm.date > todayStr) upcomingAll.push(norm);
+      }
+    }
+    // Aussi les matchs d'aujourd'hui (eventspastleague peut avoir des matchs du jour)
+    const todayResults = await Promise.all(
+      TSDB_LEAGUES.map(l => tsdb(`eventsday.php?d=${todayStr}&l=${encodeURIComponent(l.name)}`).then(d => ({ d, l })))
+    );
+    for (const { d, l } of todayResults) {
+      for (const m of d?.events || []) {
+        const norm = tsdbMatchToNorm(m, l);
+        if (!todayAll.find(x => x.home === norm.home && x.away === norm.away)) {
+          todayAll.push(norm);
         }
       }
     }
-    matchesCache.today = { data: todayAll, loadedAt: Date.now(), dateKey: today };
-    matchesCache.upcoming = { data: upcomingAll, loadedAt: Date.now(), dateKey: today };
-    console.log(`Cache matchs: ${todayAll.length} aujourd'hui, ${upcomingAll.length} à venir`);
+    matchesCache.today = { data: todayAll, loadedAt: Date.now(), dateKey: todayStr };
+    matchesCache.upcoming = { data: upcomingAll, loadedAt: Date.now(), dateKey: todayStr };
+    console.log(`Cache matchs TSDB: ${todayAll.length} aujourd'hui, ${upcomingAll.length} à venir`);
   } catch(e) {
     console.error('refreshMatchesCache:', e.message);
   } finally {
@@ -247,10 +176,7 @@ async function refreshMatchesCache() {
 async function getTodayMatches() {
   const today = new Date().toISOString().split('T')[0];
   const ttl = 2 * 60 * 60 * 1000;
-  if (matchesCache.today.dateKey === today && Date.now() - matchesCache.today.loadedAt < ttl) {
-    return matchesCache.today.data;
-  }
-  // Cache périmé — retourner ce qu'on a et relancer en arrière-plan
+  if (matchesCache.today.dateKey === today && Date.now() - matchesCache.today.loadedAt < ttl) return matchesCache.today.data;
   if (!matchesCache.loading) refreshMatchesCache();
   return matchesCache.today.data;
 }
@@ -258,11 +184,83 @@ async function getTodayMatches() {
 async function getUpcomingMatches() {
   const today = new Date().toISOString().split('T')[0];
   const ttl = 2 * 60 * 60 * 1000;
-  if (matchesCache.upcoming.dateKey === today && Date.now() - matchesCache.upcoming.loadedAt < ttl) {
-    return matchesCache.upcoming.data;
-  }
+  if (matchesCache.upcoming.dateKey === today && Date.now() - matchesCache.upcoming.loadedAt < ttl) return matchesCache.upcoming.data;
   if (!matchesCache.loading) refreshMatchesCache();
   return matchesCache.upcoming.data;
+}
+
+// Recherche d'équipe via TheSportsDB
+async function findTeam(name) {
+  const data = await tsdb(`searchteams.php?t=${encodeURIComponent(name)}`);
+  if (!data?.teams?.length) return null;
+  const t = data.teams[0];
+  return {
+    team: { id: t.idTeam, name: t.strTeam, crest: t.strTeamBadge, shortName: t.strTeamShort || t.strTeam },
+    competition: { name: t.strLeague, logo: t.strLeagueBadge || '' },
+  };
+}
+
+// Analyse d'équipe via TheSportsDB
+async function getTeamAnalysis(teamName) {
+  const result = await findTeam(teamName);
+  if (!result) return null;
+  const { team, competition } = result;
+
+  const matchesData = await tsdb(`eventslast.php?id=${team.id}`);
+  const lastMatches = matchesData?.results || [];
+
+  let wins = 0, draws = 0, losses = 0, gf = 0, ga = 0;
+  const form = [];
+  for (const m of lastMatches) {
+    const isHome = m.idHomeTeam === team.id;
+    const gs = parseInt(isHome ? m.intHomeScore : m.intAwayScore) || 0;
+    const gc = parseInt(isHome ? m.intAwayScore : m.intHomeScore) || 0;
+    gf += gs; ga += gc;
+    if (gs > gc) { wins++; form.push('W'); }
+    else if (gs === gc) { draws++; form.push('D'); }
+    else { losses++; form.push('L'); }
+  }
+  const played = lastMatches.length;
+  return {
+    team, competition, lastMatches, form, wins, draws, losses, played,
+    avgFor: played ? (gf/played).toFixed(1) : 'N/A',
+    avgAga: played ? (ga/played).toFixed(1) : 'N/A',
+  };
+}
+
+// Analyse premium
+async function getTeamAnalysisPremium(teamName) {
+  const base = await getTeamAnalysis(teamName);
+  if (!base) return null;
+  const { team } = base;
+
+  const nextData = await tsdb(`eventsnext.php?id=${team.id}`);
+  const nextRaw = nextData?.events?.[0] || null;
+
+  // Forme dom/ext sur les 10 derniers matchs
+  let homeW=0,homeD=0,homeL=0,awayW=0,awayD=0,awayL=0;
+  for (const m of base.lastMatches) {
+    const isHome = m.idHomeTeam === team.id;
+    const gs = parseInt(isHome ? m.intHomeScore : m.intAwayScore) || 0;
+    const gc = parseInt(isHome ? m.intAwayScore : m.intHomeScore) || 0;
+    if (isHome) { if(gs>gc)homeW++;else if(gs===gc)homeD++;else homeL++; }
+    else        { if(gs>gc)awayW++;else if(gs===gc)awayD++;else awayL++; }
+  }
+
+  return {
+    ...base,
+    homeRecord: { w: homeW, d: homeD, l: homeL },
+    awayRecord: { w: awayW, d: awayD, l: awayL },
+    nextMatch: nextRaw ? {
+      opponent: nextRaw.idHomeTeam === team.id ? nextRaw.strAwayTeam : nextRaw.strHomeTeam,
+      opponentLogo: nextRaw.idHomeTeam === team.id ? (nextRaw.strAwayTeamBadge||'') : (nextRaw.strHomeTeamBadge||''),
+      isHome: nextRaw.idHomeTeam === team.id,
+      date: nextRaw.dateEvent ? new Date(nextRaw.dateEvent).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'}) : '',
+      time: nextRaw.strTime ? nextRaw.strTime.substring(0,5) : '',
+      competition: nextRaw.strLeague || '',
+    } : null,
+    h2h: [],
+  };
 }
 
 // ── Données démo ──────────────────────────────────────────────────
@@ -314,28 +312,24 @@ bot.command('matchs', async (ctx) => {
       return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, '📭 Aucun match trouvé pour aujourd\'hui.');
     }
 
-    // football-data.org format: m.competition.name, m.homeTeam.name, m.awayTeam.name, m.score, m.status
     const byLeague = {};
     for (const m of matches.slice(0, 30)) {
-      const l = m.competition?.name || m.league?.name || 'Autre';
+      const l = m.league || 'Autre';
       if (!byLeague[l]) byLeague[l] = [];
       byLeague[l].push(m);
     }
 
-    const FD_STATUS = { 'SCHEDULED':'🕐', 'LIVE':'⚽', 'IN_PLAY':'⚽', 'PAUSED':'⏸️', 'FINISHED':'✅', 'POSTPONED':'📅', 'CANCELLED':'❌', 'SUSPENDED':'⏸️', 'NS':'🕐', '1H':'⚽', HT:'⏸️', '2H':'⚽', FT:'✅' };
+    const STATUS_ICO = { 'SCHEDULED':'🕐', 'IN_PLAY':'⚽', 'FINISHED':'✅' };
 
     let text = `📅 *Matchs du ${new Date().toLocaleDateString('fr-FR')}* (${matches.length} matchs)\n\n`;
     for (const [league, games] of Object.entries(byLeague)) {
       text += `🏆 *${league}*\n`;
       for (const g of games) {
-        const st = FD_STATUS[g.status || g.fixture?.status?.short] || '⚪';
-        const home = g.homeTeam?.name || g.teams?.home?.name || '?';
-        const away = g.awayTeam?.name || g.teams?.away?.name || '?';
-        const isScheduled = ['SCHEDULED','NS'].includes(g.status || g.fixture?.status?.short);
-        const score = isScheduled
-          ? new Date(g.utcDate || g.fixture?.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Abidjan' })
-          : `${g.score?.fullTime?.home ?? g.goals?.home ?? '-'} - ${g.score?.fullTime?.away ?? g.goals?.away ?? '-'}`;
-        text += `${st} ${home} vs ${away} | ${score}\n`;
+        const st = STATUS_ICO[g.status] || '⚪';
+        const score = g.status === 'FINISHED' || g.status === 'IN_PLAY'
+          ? `${g.scoreHome ?? '-'} - ${g.scoreAway ?? '-'}`
+          : g.time || '--:--';
+        text += `${st} ${g.home || '?'} vs ${g.away || '?'} | ${score}\n`;
       }
       text += '\n';
     }
@@ -417,88 +411,6 @@ Sois direct, concis et professionnel. Commence par "🔮 Analyse :" et termine p
   }
 }
 
-// Helper: analyse d'équipe avec football-data.org
-async function getTeamAnalysis(teamName) {
-  const result = await findTeam(teamName);
-  if (!result) return null;
-  const { team, competition } = result;
-
-  // Derniers 5 matchs de l'équipe
-  const matchesData = await apiGet(`/teams/${team.id}/matches`, { limit: 5, status: 'FINISHED' });
-  const lastMatches = matchesData?.matches || [];
-
-  let wins = 0, draws = 0, losses = 0, gf = 0, ga = 0;
-  const form = [];
-  for (const m of lastMatches) {
-    const isHome = m.homeTeam?.id === team.id;
-    const gs = isHome ? m.score?.fullTime?.home : m.score?.fullTime?.away;
-    const gc = isHome ? m.score?.fullTime?.away : m.score?.fullTime?.home;
-    gf += gs || 0; ga += gc || 0;
-    if (gs > gc) { wins++; form.push('W'); }
-    else if (gs === gc) { draws++; form.push('D'); }
-    else { losses++; form.push('L'); }
-  }
-  const played = lastMatches.length;
-  const avgFor = played ? (gf / played).toFixed(1) : 'N/A';
-  const avgAga = played ? (ga / played).toFixed(1) : 'N/A';
-
-  return { team, competition, lastMatches, form, wins, draws, losses, avgFor, avgAga, played };
-}
-
-// Analyse premium : H2H + forme domicile/extérieur
-async function getTeamAnalysisPremium(teamName) {
-  const base = await getTeamAnalysis(teamName);
-  if (!base) return null;
-  const { team } = base;
-
-  // Prochain match
-  const nextData = await apiGet(`/teams/${team.id}/matches`, { limit: 1, status: 'SCHEDULED' });
-  const nextMatch = nextData?.matches?.[0] || null;
-
-  // Forme domicile vs extérieur (10 derniers)
-  const extData = await apiGet(`/teams/${team.id}/matches`, { limit: 10, status: 'FINISHED' });
-  const allMatches = extData?.matches || [];
-  let homeW=0,homeD=0,homeL=0,awayW=0,awayD=0,awayL=0;
-  for (const m of allMatches) {
-    const isHome = m.homeTeam?.id === team.id;
-    const gs = isHome ? m.score?.fullTime?.home : m.score?.fullTime?.away;
-    const gc = isHome ? m.score?.fullTime?.away : m.score?.fullTime?.home;
-    if (isHome) { if(gs>gc)homeW++;else if(gs===gc)homeD++;else homeL++; }
-    else        { if(gs>gc)awayW++;else if(gs===gc)awayD++;else awayL++; }
-  }
-
-  // H2H — si prochain match connu, chercher les confrontations passées
-  let h2h = [];
-  if (nextMatch) {
-    const oppId = nextMatch.homeTeam?.id === team.id ? nextMatch.awayTeam?.id : nextMatch.homeTeam?.id;
-    const h2hData = await apiGet(`/teams/${team.id}/matches`, { limit: 5, status: 'FINISHED' });
-    h2h = (h2hData?.matches || []).filter(m =>
-      (m.homeTeam?.id === team.id && m.awayTeam?.id === oppId) ||
-      (m.awayTeam?.id === team.id && m.homeTeam?.id === oppId)
-    ).slice(0, 5).map(m => {
-      const isHome = m.homeTeam?.id === team.id;
-      const gs = isHome ? m.score?.fullTime?.home : m.score?.fullTime?.away;
-      const gc = isHome ? m.score?.fullTime?.away : m.score?.fullTime?.home;
-      return { opponent: isHome ? m.awayTeam?.name : m.homeTeam?.name, goalsFor: gs, goalsAgainst: gc, isHome };
-    });
-  }
-
-  return {
-    ...base,
-    homeRecord: { w: homeW, d: homeD, l: homeL },
-    awayRecord: { w: awayW, d: awayD, l: awayL },
-    nextMatch: nextMatch ? {
-      opponent: nextMatch.homeTeam?.id === team.id ? nextMatch.awayTeam?.name : nextMatch.homeTeam?.name,
-      opponentLogo: nextMatch.homeTeam?.id === team.id ? nextMatch.awayTeam?.crest : nextMatch.homeTeam?.crest,
-      isHome: nextMatch.homeTeam?.id === team.id,
-      date: nextMatch.utcDate ? new Date(nextMatch.utcDate).toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', timeZone:'Africa/Abidjan' }) : '',
-      time: nextMatch.utcDate ? new Date(nextMatch.utcDate).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit', timeZone:'Africa/Abidjan' }) : '',
-      competition: nextMatch.competition?.name,
-    } : null,
-    h2h,
-  };
-}
-
 // Génère le coupon du jour (avec cache) — premium = 8 matchs, gratuit = 4
 function generateCoupon(rawMatches, isPremium) {
   const today = new Date().toLocaleDateString('fr-FR');
@@ -507,10 +419,10 @@ function generateCoupon(rawMatches, isPremium) {
     if (!isPremium) return { ...cached, matches: cached.matches.slice(0, 4), coteCombinee: cached.matches.slice(0,4).reduce((a,m) => a*m.cote, 1).toFixed(2) };
     return cached;
   }
-  const PRIORITY_COMPS = ['Premier League','Primera Division','Bundesliga','Serie A','Ligue 1','UEFA Champions League'];
+  const PRIORITY_COMPS = ['Premier League','La Liga','Bundesliga','Serie A','Ligue 1','Champions League'];
   const sorted = [
-    ...rawMatches.filter(m => PRIORITY_COMPS.includes(m.competition?.name)),
-    ...rawMatches.filter(m => !PRIORITY_COMPS.includes(m.competition?.name)),
+    ...rawMatches.filter(m => PRIORITY_COMPS.some(p => m.league?.includes(p))),
+    ...rawMatches.filter(m => !PRIORITY_COMPS.some(p => m.league?.includes(p))),
   ].slice(0, 10);
   const PRONOSTICS = ['1','N','2'];
   const LABELS = { '1':'Domicile gagne','N':'Match nul','2':'Extérieur gagne' };
@@ -523,10 +435,10 @@ function generateCoupon(rawMatches, isPremium) {
     const stars = STARS[Math.floor(Math.random()*STARS.length)];
     coteCombinee *= cote;
     return {
-      home: m.homeTeam?.name, homeLogo: m.homeTeam?.crest,
-      away: m.awayTeam?.name, awayLogo: m.awayTeam?.crest,
-      league: m.competition?.name,
-      time: m.utcDate ? new Date(m.utcDate).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',timeZone:'Africa/Abidjan'}) : '--:--',
+      home: m.home, homeLogo: m.homeLogo,
+      away: m.away, awayLogo: m.awayLogo,
+      league: m.league,
+      time: m.time || '--:--',
       prono, label: LABELS[prono], cote, stars,
     };
   });
@@ -555,10 +467,10 @@ bot.command('analyse', async (ctx) => {
     const { team, competition, lastMatches, form, avgFor, avgAga } = data;
     const formStr = form.map(r => r==='W'?'✅':r==='D'?'🟡':'❌').join(' ') || 'N/A';
     const lastStr = lastMatches.slice(0,5).map(m => {
-      const isHome = m.homeTeam?.id === team.id;
-      const opp = isHome ? m.awayTeam?.name : m.homeTeam?.name;
-      const gs = isHome ? m.score?.fullTime?.home : m.score?.fullTime?.away;
-      const gc = isHome ? m.score?.fullTime?.away : m.score?.fullTime?.home;
+      const isHome = m.idHomeTeam === team.id;
+      const opp = isHome ? m.strAwayTeam : m.strHomeTeam;
+      const gs = parseInt(isHome ? m.intHomeScore : m.intAwayScore) || 0;
+      const gc = parseInt(isHome ? m.intAwayScore : m.intHomeScore) || 0;
       const r = gs > gc ? '✅' : gs === gc ? '🟡' : '❌';
       return `${r} vs ${opp} (${gs}-${gc})`;
     }).join('\n');
@@ -651,11 +563,10 @@ bot.command('coupon', async (ctx) => {
     if (!matches?.length) {
       return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, '📭 Aucun match aujourd\'hui pour générer un coupon.');
     }
-    // Prendre les 4 premiers matchs des ligues prioritaires
-    const PRIORITY_COMPS = ['Premier League','Primera Division','Bundesliga','Serie A','Ligue 1','UEFA Champions League'];
+    const PRIORITY_COMPS = ['Premier League','La Liga','Bundesliga','Serie A','Ligue 1','Champions League'];
     const sorted = [
-      ...matches.filter(m => PRIORITY_COMPS.includes(m.competition?.name)),
-      ...matches.filter(m => !PRIORITY_COMPS.includes(m.competition?.name)),
+      ...matches.filter(m => PRIORITY_COMPS.some(p => m.league?.includes(p))),
+      ...matches.filter(m => !PRIORITY_COMPS.some(p => m.league?.includes(p))),
     ].slice(0, 4);
 
     const PRONOSTICS = ['1','N','2'];
@@ -667,17 +578,17 @@ bot.command('coupon', async (ctx) => {
     let coteCombinee = 1;
 
     for (const m of sorted) {
-      const home = m.homeTeam?.name || '?';
-      const away = m.awayTeam?.name || '?';
+      const home = m.home || '?';
+      const away = m.away || '?';
       const pronoIdx = Math.floor(Math.random() * 3);
       const prono = PRONOSTICS[pronoIdx];
       const cotesArr = COTES[prono];
       const cote = cotesArr[Math.floor(Math.random() * cotesArr.length)];
       const conf = CONFIANCE[Math.floor(Math.random() * 3)];
       coteCombinee *= cote;
-      const time = m.utcDate ? new Date(m.utcDate).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Abidjan' }) : '--:--';
+      const time = m.time || '--:--';
       text += `⚽ *${home} vs ${away}*\n`;
-      text += `🏆 ${m.competition?.name} | 🕐 ${time}\n`;
+      text += `🏆 ${m.league || ''} | 🕐 ${time}\n`;
       text += `📌 Pronostic : *${prono}* — ${LABELS[prono]}\n`;
       text += `💰 Cote : *${cote}* | ${conf}\n\n`;
     }
@@ -974,37 +885,21 @@ bot.command('admin', async (ctx) => {
 bot.hears(['⚽ Matchs du jour', 'Matchs du jour'], async (ctx) => {
   const loading = await ctx.reply('⏳ Chargement des matchs...');
   try {
-    let matches;
-    if (DEMO_MODE) {
-      matches = DEMO_MATCHES;
-    } else {
-      const today = new Date().toISOString().split('T')[0];
-      matches = await apiGet('/fixtures', { date: today });
-    }
-    if (!matches || !matches.length) {
-      return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, '📭 Aucun match trouvé pour aujourd\'hui.');
-    }
-    const sorted = [
-      ...matches.filter(m => PRIORITY.some(p => m.league?.name?.includes(p))),
-      ...matches.filter(m => !PRIORITY.some(p => m.league?.name?.includes(p))),
-    ].slice(0, 25);
+    const matches = DEMO_MODE ? DEMO_MATCHES : await getTodayMatches();
+    if (!matches?.length) return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, '📭 Aucun match trouvé pour aujourd\'hui.');
     const byLeague = {};
-    for (const m of sorted) {
-      const l = m.league?.name || 'Autre';
+    for (const m of matches.slice(0, 25)) {
+      const l = m.league || 'Autre';
       if (!byLeague[l]) byLeague[l] = [];
       byLeague[l].push(m);
     }
-    let text = `📅 *Matchs du ${new Date().toLocaleDateString('fr-FR')}*${!DEMO_MODE ? ` (${matches.length} au total)` : ' (démo)'}\n\n`;
+    let text = `📅 *Matchs du ${new Date().toLocaleDateString('fr-FR')}* (${matches.length})\n\n`;
     for (const [league, games] of Object.entries(byLeague)) {
       text += `🏆 *${league}*\n`;
       for (const g of games) {
-        const st = STATUS_EMOJI[g.fixture?.status?.short] || '⚪';
-        const home = g.teams?.home?.name || '?';
-        const away = g.teams?.away?.name || '?';
-        const score = g.fixture?.status?.short === 'NS'
-          ? new Date(g.fixture.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-          : `${g.goals?.home ?? '-'} - ${g.goals?.away ?? '-'}`;
-        text += `${st} ${home} vs ${away} | ${score}\n`;
+        const st = g.status === 'FINISHED' ? '✅' : g.status === 'IN_PLAY' ? '⚽' : '🕐';
+        const score = (g.status === 'FINISHED' || g.status === 'IN_PLAY') ? `${g.scoreHome ?? '-'} - ${g.scoreAway ?? '-'}` : g.time || '--:--';
+        text += `${st} ${g.home || '?'} vs ${g.away || '?'} | ${score}\n`;
       }
       text += '\n';
     }
@@ -1104,33 +999,24 @@ async function handleApi(req, res, urlObj) {
       const rawMatches = await getTodayMatches();
       const loading = matchesCache.loading && matchesCache.today.data.length === 0;
       const formatMatch = m => ({
-        id: m.id,
-        date: m.utcDate ? new Date(m.utcDate).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Abidjan' }) : '',
-        time: m.utcDate ? new Date(m.utcDate).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Abidjan' }) : '--:--',
-        home: m.homeTeam?.name,
-        away: m.awayTeam?.name,
-        homeLogo: m.homeTeam?.crest,
-        awayLogo: m.awayTeam?.crest,
-        league: m.competition?.name,
-        leagueLogo: m.competition?.emblem,
+        date: m.date ? new Date(m.date).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }) : '',
+        time: m.time || '--:--',
+        home: m.home, away: m.away,
+        homeLogo: m.homeLogo, awayLogo: m.awayLogo,
+        league: m.league, leagueLogo: m.leagueLogo,
         status: m.status,
-        scoreHome: m.score?.fullTime?.home,
-        scoreAway: m.score?.fullTime?.away,
+        scoreHome: m.scoreHome, scoreAway: m.scoreAway,
       });
       const matches = rawMatches.slice(0, 40).map(formatMatch);
       res.end(JSON.stringify({ ok: true, matches, loading }));
     } else if (urlObj.pathname === '/api/matchs-a-venir') {
       const rawMatches = await getUpcomingMatches();
       const matches = rawMatches.slice(0, 60).map(m => ({
-        id: m.id,
-        date: m.utcDate ? new Date(m.utcDate).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Abidjan' }) : '',
-        time: m.utcDate ? new Date(m.utcDate).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Abidjan' }) : '--:--',
-        home: m.homeTeam?.name,
-        away: m.awayTeam?.name,
-        homeLogo: m.homeTeam?.crest,
-        awayLogo: m.awayTeam?.crest,
-        league: m.competition?.name,
-        leagueLogo: m.competition?.emblem,
+        date: m.date ? new Date(m.date).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }) : '',
+        time: m.time || '--:--',
+        home: m.home, away: m.away,
+        homeLogo: m.homeLogo, awayLogo: m.awayLogo,
+        league: m.league, leagueLogo: m.leagueLogo,
         status: m.status,
       }));
       res.end(JSON.stringify({ ok: true, matches }));
@@ -1147,12 +1033,12 @@ async function handleApi(req, res, urlObj) {
       if (!data) return res.end(JSON.stringify({ ok: false, error: `Équipe "${teamName}" introuvable` }));
       const { team, competition, lastMatches, form, wins, draws, losses, avgFor, avgAga, played } = data;
       const lastMatchesMapped = lastMatches.slice(0, 5).map(m => {
-        const isHome = m.homeTeam?.id === team.id;
+        const isHome = m.idHomeTeam === team.id;
         return {
-          opponent: isHome ? m.awayTeam?.name : m.homeTeam?.name,
-          opponentLogo: isHome ? m.awayTeam?.crest : m.homeTeam?.crest,
-          goalsFor: isHome ? m.score?.fullTime?.home : m.score?.fullTime?.away,
-          goalsAgainst: isHome ? m.score?.fullTime?.away : m.score?.fullTime?.home,
+          opponent: isHome ? m.strAwayTeam : m.strHomeTeam,
+          opponentLogo: isHome ? (m.strAwayTeamBadge||'') : (m.strHomeTeamBadge||''),
+          goalsFor: parseInt(isHome ? m.intHomeScore : m.intAwayScore) || 0,
+          goalsAgainst: parseInt(isHome ? m.intAwayScore : m.intHomeScore) || 0,
           isHome,
         };
       });
@@ -1183,7 +1069,7 @@ async function handleApi(req, res, urlObj) {
         ok: true,
         isPremium,
         team: { name: team.name, logo: team.crest },
-        league: { name: competition?.name, logo: competition?.emblem },
+        league: { name: competition?.name, logo: competition?.logo || '' },
         season: new Date().getFullYear(),
         form,
         played, wins, draws, loses: losses,
@@ -1318,14 +1204,13 @@ async function sendFavoriteAlerts() {
     const alerts = [];
     for (const fav of favs) {
       const match = todayMatches.find(m =>
-        m.homeTeam?.name?.toLowerCase().includes(fav.name.toLowerCase()) ||
-        m.awayTeam?.name?.toLowerCase().includes(fav.name.toLowerCase())
+        m.home?.toLowerCase().includes(fav.name.toLowerCase()) ||
+        m.away?.toLowerCase().includes(fav.name.toLowerCase())
       );
       if (match) {
-        const time = match.utcDate ? new Date(match.utcDate).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit', timeZone:'Africa/Abidjan' }) : '--:--';
-        const isHome = match.homeTeam?.name?.toLowerCase().includes(fav.name.toLowerCase());
-        const opp = isHome ? match.awayTeam?.name : match.homeTeam?.name;
-        alerts.push(`⚽ *${fav.name}* ${isHome ? 'vs' : '@'} *${opp}* à *${time}*\n🏆 ${match.competition?.name}`);
+        const isHome = match.home?.toLowerCase().includes(fav.name.toLowerCase());
+        const opp = isHome ? match.away : match.home;
+        alerts.push(`⚽ *${fav.name}* ${isHome ? 'vs' : '@'} *${opp}* à *${match.time || '--:--'}*\n🏆 ${match.league || ''}`);
       }
     }
     if (alerts.length) {
