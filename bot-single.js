@@ -1175,11 +1175,20 @@ async function handleApi(req, res, urlObj) {
         const league = TSDB_LEAGUES.find(l => l.id === leagueId);
         const searchName = league?.searchName || leagueId;
         const data = await tsdb(`search_all_teams.php?l=${encodeURIComponent(searchName)}`);
-        const teams = (data?.teams || []).map(t => ({
-          id: t.idTeam, name: t.strTeam,
-          logo: t.strTeamBadge || '', short: t.strTeamShort || t.strTeam,
-        }));
-        res.end(JSON.stringify({ ok: true, teams }));
+        // Enrichir avec badges via lookupteam en parallèle (max 6 en même temps)
+        const rawTeams = data?.teams || [];
+        const BATCH = 8;
+        const teamsWithLogos = [];
+        for (let i = 0; i < rawTeams.length; i += BATCH) {
+          const batch = rawTeams.slice(i, i + BATCH);
+          const results = await Promise.all(batch.map(t => tsdb(`lookupteam.php?id=${t.idTeam}`)));
+          for (let j = 0; j < batch.length; j++) {
+            const t = batch[j];
+            const detail = results[j]?.teams?.[0];
+            teamsWithLogos.push({ id: t.idTeam, name: t.strTeam, logo: detail?.strBadge || '', short: t.strTeamShort || t.strTeam });
+          }
+        }
+        res.end(JSON.stringify({ ok: true, teams: teamsWithLogos }));
       } else {
         res.end(JSON.stringify({ ok: true, leagues: TSDB_LEAGUES }));
       }
