@@ -167,6 +167,16 @@ function matchTeamName(t, nameLower, resolved) {
     t.shortName?.toLowerCase().includes(nameLower);
 }
 
+// Appel API sans throttle (pour la recherche rapide d'équipe)
+async function apiGetFast(endpoint, params = {}) {
+  try {
+    const r = await api.get(endpoint, { params });
+    return r.data;
+  } catch(e) {
+    return null;
+  }
+}
+
 async function findTeam(name) {
   const nameLower = name.toLowerCase().trim();
   const resolved = TEAM_ALIASES[nameLower] || nameLower;
@@ -177,50 +187,22 @@ async function findTeam(name) {
     if (found) return found;
   }
 
-  // 2. Essayer l'endpoint de recherche global (disponible sur free tier)
-  try {
-    const data = await apiGet('/teams', { name });
-    if (data?.teams?.length) {
-      const t = data.teams[0];
-      // Trouver la compétition associée
-      const compEntry = teamsCache.data?.find(e => e.team.id === t.id);
-      return { team: t, competition: compEntry?.competition || null };
-    }
-  } catch(e) {}
-
-  // 3. Chercher seulement dans les 3 grandes compétitions (PL, PD, CL) sans attendre tout le cache
-  const quickComps = ['PL', 'PD', 'CL'];
-  for (const comp of quickComps) {
-    // Vérifier si déjà dans le cache partiel
-    const cached = teamsCache.data?.filter(e => e.competition?.code === comp);
-    if (cached?.length) {
-      const found = cached.find(({ team: t }) => matchTeamName(t, nameLower, resolved));
-      if (found) return found;
-      continue;
-    }
-    try {
-      const data = await apiGet(`/competitions/${comp}/teams`);
-      if (data?.teams) {
-        if (!teamsCache.data) teamsCache.data = [];
-        for (const t of data.teams) {
-          if (!teamsCache.data.find(e => e.team.id === t.id)) {
-            teamsCache.data.push({ team: t, competition: data.competition });
-          }
-        }
-        const found = data.teams.find(t => matchTeamName(t, nameLower, resolved));
-        if (found) return { team: found, competition: data.competition };
+  // 2. Chercher dans toutes les compétitions en parallèle (sans throttle)
+  const results = await Promise.all(
+    FD_COMPETITIONS.map(comp => apiGetFast(`/competitions/${comp}/teams`))
+  );
+  if (!teamsCache.data) teamsCache.data = [];
+  for (const data of results) {
+    if (!data?.teams) continue;
+    for (const t of data.teams) {
+      if (!teamsCache.data.find(e => e.team.id === t.id)) {
+        teamsCache.data.push({ team: t, competition: data.competition });
       }
-    } catch(e) { continue; }
+    }
   }
-
-  // 4. Si toujours pas trouvé, attendre le cache complet
-  if (!teamsCache.data || teamsCache.data.length < 50) {
-    await loadAllTeams();
-    const found = teamsCache.data?.find(({ team: t }) => matchTeamName(t, nameLower, resolved));
-    if (found) return found;
-  }
-
-  return null;
+  teamsCache.loadedAt = Date.now();
+  const found = teamsCache.data.find(({ team: t }) => matchTeamName(t, nameLower, resolved));
+  return found || null;
 }
 
 // Cache matchs par compétition (2h TTL) — chargé en arrière-plan
