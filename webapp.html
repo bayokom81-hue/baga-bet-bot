@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>BAGA BET</title>
+<title>BetAnalyse</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
 :root{
@@ -207,7 +207,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI'
   <div class="header-inner">
     <div class="logo">
       <div class="logo-icon">⚽</div>
-      <div><div class="logo-text">BAGA BET</div><div class="logo-sub">Statistiques & Pronostics</div></div>
+      <div><div class="logo-text">BetAnalyse</div><div class="logo-sub">Statistiques & Pronostics</div></div>
     </div>
     <div class="premium-pill" onclick="showPage('premium')">💎 Premium</div>
   </div>
@@ -249,7 +249,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI'
   <div class="card" style="background:linear-gradient(135deg,#141200,#1a1700);border-color:var(--gold-border);margin-bottom:14px;">
     <div style="text-align:center;padding:6px 0">
       <div style="font-size:36px;margin-bottom:8px">💎</div>
-      <div style="font-size:17px;font-weight:900;margin-bottom:4px">BAGA BET Premium</div>
+      <div style="font-size:17px;font-weight:900;margin-bottom:4px">BetAnalyse Premium</div>
       <div style="font-size:12px;color:var(--muted)">Accès illimité à toutes les fonctionnalités</div>
     </div>
   </div>
@@ -768,7 +768,7 @@ async function loadProfil() {
     <div class="card-title">📊 Mon activité</div>
     <div class="profile-stat"><span class="profile-stat-label">❤️ Équipes favorites</span><span class="profile-stat-value accent">${myFavorites.length} / ${isPremium?10:3}</span></div>
     <div class="profile-stat"><span class="profile-stat-label">🔍 Dernière analyse</span><span class="profile-stat-value">${currentTeam ? currentTeam.name : '—'}</span></div>
-    <div class="profile-stat"><span class="profile-stat-label">🤖 Version bot</span><span class="profile-stat-value" style="color:var(--muted)">BAGA BET v1.0</span></div>
+    <div class="profile-stat"><span class="profile-stat-label">🤖 Version bot</span><span class="profile-stat-value" style="color:var(--muted)">BetAnalyse v1.0</span></div>
   </div>
 
   <div class="card">
@@ -779,7 +779,7 @@ async function loadProfil() {
   </div>
 
   ${isPremium ? '' : ''}
-  <div class="disclaimer">BAGA BET — Pronostics à titre informatif uniquement.<br>Pariez de façon responsable.</div>`;
+  <div class="disclaimer">BetAnalyse — Pronostics à titre informatif uniquement.<br>Pariez de façon responsable.</div>`;
 
   el.innerHTML = html;
 }
