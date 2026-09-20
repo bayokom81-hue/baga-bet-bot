@@ -6,174 +6,210 @@
 <title>BAGA BET</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-  :root {
-    --bg:#0d0d0d;--card:#1a1a1a;--card2:#222;--border:#2a2a2a;
-    --accent:#00c853;--accent2:#00e676;--text:#f0f0f0;--muted:#888;
-    --win:#00c853;--draw:#ffc107;--lose:#f44336;--nav-h:64px;--gold:#ffd700;
-  }
-  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-  body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI',sans-serif;min-height:100vh;padding-bottom:var(--nav-h);overscroll-behavior:none}
+:root{
+  --bg:#0a0a0f;--card:#13131a;--card2:#1a1a24;--border:#25253a;
+  --accent:#00e676;--accent-dim:#00e67622;--accent-border:#00e67644;
+  --text:#f0f0f8;--muted:#6b6b8a;--muted2:#9090b0;
+  --win:#00e676;--draw:#ffb74d;--lose:#ef5350;
+  --gold:#ffd54f;--gold-dim:#ffd54f22;--gold-border:#ffd54f44;
+  --nav-h:62px;--r:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI',system-ui,sans-serif;min-height:100vh;padding-bottom:var(--nav-h);overscroll-behavior:none}
 
-  .header{background:linear-gradient(135deg,#0a2e0a,#0d1f0d);padding:14px 16px 10px;border-bottom:1px solid #1a3a1a;position:sticky;top:0;z-index:10}
-  .header-top{display:flex;align-items:center;justify-content:space-between}
-  .logo{font-size:20px;font-weight:800;letter-spacing:1px;color:var(--accent2)}
-  .logo span{color:var(--muted);font-weight:400;font-size:12px;display:block;letter-spacing:0;margin-top:1px}
-  .premium-badge{background:linear-gradient(135deg,#ffd700,#ff8c00);color:#000;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;cursor:pointer}
+/* ── Header ── */
+.header{background:linear-gradient(180deg,#0d0d18 0%,#0a0a0f 100%);padding:12px 16px 8px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:20;backdrop-filter:blur(10px)}
+.header-inner{display:flex;align-items:center;justify-content:space-between}
+.logo{display:flex;align-items:center;gap:8px}
+.logo-icon{width:32px;height:32px;background:linear-gradient(135deg,#00e676,#00b248);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px}
+.logo-text{font-size:18px;font-weight:900;letter-spacing:.5px;background:linear-gradient(135deg,#00e676,#69f0ae);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.logo-sub{font-size:10px;color:var(--muted);margin-top:-2px;font-weight:400}
+.premium-pill{background:linear-gradient(135deg,#ffd54f,#ff8f00);color:#000;font-size:11px;font-weight:800;padding:5px 12px;border-radius:20px;cursor:pointer;letter-spacing:.3px}
 
-  /* Sous-onglets matchs */
-  .tab-bar{display:flex;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:3px;margin-bottom:12px;gap:3px}
-  .tab-btn{flex:1;border:none;background:none;color:var(--muted);font-size:13px;font-weight:600;padding:8px;border-radius:7px;cursor:pointer;transition:all .2s}
-  .tab-btn.active{background:var(--accent);color:#000}
+/* ── Nav ── */
+.nav{position:fixed;bottom:0;left:0;right:0;height:var(--nav-h);background:rgba(13,13,20,.97);border-top:1px solid var(--border);display:flex;z-index:100;backdrop-filter:blur(12px)}
+.nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:none;background:none;color:var(--muted);font-size:9px;font-weight:600;cursor:pointer;transition:all .2s;letter-spacing:.3px;text-transform:uppercase;position:relative}
+.nav-btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;transition:all .2s}
+.nav-btn.active{color:var(--accent)}
+.nav-btn.active svg{filter:drop-shadow(0 0 6px #00e676aa)}
+.nav-indicator{position:absolute;bottom:6px;width:4px;height:4px;border-radius:50%;background:var(--accent);opacity:0;transition:.2s}
+.nav-btn.active .nav-indicator{opacity:1}
 
-  /* Séparateur de date */
-  .date-sep{font-size:12px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.5px;padding:10px 2px 6px;display:flex;align-items:center;gap:8px}
-  .date-sep::after{content:'';flex:1;height:1px;background:var(--border)}
+/* ── Pages ── */
+.page{display:none;padding:12px 12px 0}
+.page.active{display:block}
 
-  .nav{position:fixed;bottom:0;left:0;right:0;height:var(--nav-h);background:#111;border-top:1px solid var(--border);display:flex;z-index:100}
-  .nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:none;background:none;color:var(--muted);font-size:10px;cursor:pointer;transition:color .2s}
-  .nav-btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
-  .nav-btn.active{color:var(--accent2)}
+/* ── Cards ── */
+.card{background:var(--card);border-radius:var(--r);border:1px solid var(--border);padding:14px;margin-bottom:10px}
+.card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted2);margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.card-title img{width:14px;height:14px;object-fit:contain}
 
-  .page{display:none;padding:12px}
-  .page.active{display:block}
+/* ── Sub-tabs ── */
+.tab-bar{display:flex;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:3px;margin-bottom:12px;gap:2px}
+.tab-btn{flex:1;border:none;background:none;color:var(--muted);font-size:12px;font-weight:700;padding:9px 4px;border-radius:8px;cursor:pointer;transition:all .2s;letter-spacing:.2px}
+.tab-btn.active{background:linear-gradient(135deg,#00e676,#00c853);color:#000}
 
-  .card{background:var(--card);border-radius:12px;border:1px solid var(--border);padding:14px;margin-bottom:10px}
-  .card-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:6px}
-  .card-title img{width:16px;height:16px;object-fit:contain}
+/* ── Date separator ── */
+.date-sep{font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.8px;padding:12px 2px 6px;display:flex;align-items:center;gap:8px}
+.date-sep::after{content:'';flex:1;height:1px;background:var(--border)}
 
-  /* Match cards */
-  .match-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px}
-  .match-league{font-size:11px;color:var(--muted);margin-bottom:7px;display:flex;align-items:center;gap:5px}
-  .match-league img{width:14px;height:14px;object-fit:contain}
-  .match-row{display:flex;align-items:center;justify-content:space-between}
-  .match-team{display:flex;align-items:center;gap:7px;flex:1}
-  .match-team.right{flex-direction:row-reverse}
-  .match-team img{width:26px;height:26px;object-fit:contain}
-  .match-team-name{font-size:12px;font-weight:600;line-height:1.2}
-  .match-score{min-width:64px;text-align:center;font-size:17px;font-weight:800;background:var(--card2);border-radius:8px;padding:4px 8px}
-  .match-score.time{font-size:12px;font-weight:600;color:var(--accent2)}
-  .match-score.live{color:#f44336;font-size:11px}
+/* ── Match cards ── */
+.match-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:7px;transition:border-color .2s}
+.match-card:active{border-color:var(--accent-border)}
+.match-league-row{font-size:10px;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:5px;font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+.match-league-row img{width:13px;height:13px;object-fit:contain}
+.match-row{display:flex;align-items:center;gap:8px}
+.match-team{display:flex;align-items:center;gap:7px;flex:1;min-width:0}
+.match-team.right{flex-direction:row-reverse}
+.match-team img{width:28px;height:28px;object-fit:contain;flex-shrink:0}
+.match-team-name{font-size:12px;font-weight:700;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.match-score-wrap{flex-shrink:0;min-width:60px;text-align:center}
+.match-score{font-size:17px;font-weight:900;background:var(--card2);border-radius:8px;padding:5px 10px;display:inline-block;letter-spacing:1px}
+.match-score.time{font-size:12px;font-weight:700;color:var(--accent);background:var(--accent-dim)}
+.match-score.live{font-size:11px;color:var(--lose);background:#ef535015;border:1px solid #ef535033}
 
-  /* Search */
-  .search-wrap{position:relative;margin-bottom:10px}
-  .search-input{width:100%;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 16px 12px 42px;color:var(--text);font-size:15px;outline:none}
-  .search-input:focus{border-color:var(--accent)}
-  .search-icon{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;font-size:16px}
-  .search-btn{width:100%;background:var(--accent);color:#000;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px}
-  .search-btn:active{opacity:.85}
+/* ── Search ── */
+.search-wrap{position:relative;margin-bottom:10px}
+.search-input{width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:12px;padding:13px 16px 13px 44px;color:var(--text);font-size:15px;outline:none;transition:border-color .2s}
+.search-input:focus{border-color:var(--accent)}
+.search-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:16px;pointer-events:none}
+.search-btn{width:100%;background:linear-gradient(135deg,#00e676,#00c853);color:#000;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;letter-spacing:.3px;transition:opacity .15s}
+.search-btn:active{opacity:.85}
 
-  /* Stats grid */
-  .stats-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}
-  .stat-box{background:var(--card2);border-radius:10px;padding:12px 8px;text-align:center;border:1px solid var(--border)}
-  .stat-val{font-size:22px;font-weight:800;color:var(--accent2)}
-  .stat-lbl{font-size:11px;color:var(--muted);margin-top:2px}
+/* ── Stats grid ── */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}
+.stat-box{background:var(--card2);border-radius:12px;padding:12px 8px;text-align:center;border:1px solid var(--border)}
+.stat-val{font-size:24px;font-weight:900;background:linear-gradient(135deg,var(--accent),#69f0ae);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.stat-lbl{font-size:10px;color:var(--muted);margin-top:3px;font-weight:600;text-transform:uppercase;letter-spacing:.4px}
 
-  /* Form dots */
-  .form-row{display:flex;gap:6px;flex-wrap:wrap}
-  .form-dot{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
-  .form-dot.W{background:#00c85322;color:var(--win);border:1px solid #00c85344}
-  .form-dot.D{background:#ffc10722;color:var(--draw);border:1px solid #ffc10744}
-  .form-dot.L{background:#f4433622;color:var(--lose);border:1px solid #f4433644}
+/* ── Form dots ── */
+.form-row{display:flex;gap:6px;flex-wrap:wrap}
+.form-dot{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
+.form-dot.W{background:#00e67620;color:var(--win);border:1.5px solid #00e67650}
+.form-dot.D{background:#ffb74d20;color:var(--draw);border:1.5px solid #ffb74d50}
+.form-dot.L{background:#ef535020;color:var(--lose);border:1.5px solid #ef535050}
 
-  /* Last match */
-  .last-match{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border)}
-  .last-match:last-child{border-bottom:none}
-  .last-match-opp{display:flex;align-items:center;gap:8px;font-size:13px}
-  .last-match-opp img{width:22px;height:22px;object-fit:contain}
-  .result-tag{font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px}
-  .result-tag.W{background:#00c85322;color:var(--win)}
-  .result-tag.D{background:#ffc10722;color:var(--draw)}
-  .result-tag.L{background:#f4433622;color:var(--lose)}
+/* ── Last match ── */
+.last-match{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)}
+.last-match:last-child{border-bottom:none}
+.last-match-opp{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500}
+.last-match-opp img{width:20px;height:20px;object-fit:contain}
+.result-tag{font-size:10px;font-weight:800;padding:4px 10px;border-radius:20px;letter-spacing:.3px}
+.result-tag.W{background:#00e67620;color:var(--win)}
+.result-tag.D{background:#ffb74d20;color:var(--draw)}
+.result-tag.L{background:#ef535020;color:var(--lose)}
 
-  /* Goals bar */
-  .goals-row{display:flex;align-items:center;gap:10px;margin-bottom:6px}
-  .goals-label{font-size:12px;color:var(--muted);width:80px}
-  .goals-bar{flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden}
-  .goals-fill{height:100%;border-radius:3px;transition:width .6s}
-  .goals-fill.for{background:var(--win)}
-  .goals-fill.against{background:var(--lose)}
-  .goals-val{font-size:13px;font-weight:700;width:36px;text-align:right}
+/* ── Goals bar ── */
+.goals-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.goals-label{font-size:11px;color:var(--muted);width:74px;font-weight:600}
+.goals-bar{flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden}
+.goals-fill{height:100%;border-radius:3px}
+.goals-fill.for{background:linear-gradient(90deg,#00c853,#00e676)}
+.goals-fill.against{background:linear-gradient(90deg,#c62828,#ef5350)}
+.goals-val{font-size:13px;font-weight:800;width:38px;text-align:right}
 
-  /* Team header */
-  .team-header{display:flex;align-items:center;gap:14px;background:var(--card);border-radius:14px;border:1px solid var(--border);padding:14px;margin-bottom:10px}
-  .team-header img{width:52px;height:52px;object-fit:contain}
-  .team-header-info h2{font-size:18px;font-weight:800}
-  .team-header-info p{font-size:13px;color:var(--muted);margin-top:3px;display:flex;align-items:center;gap:5px}
-  .team-header-info p img{width:16px;height:12px;object-fit:contain}
+/* ── Team header ── */
+.team-header{display:flex;align-items:center;gap:14px;background:var(--card);border-radius:var(--r);border:1px solid var(--border);padding:16px;margin-bottom:10px}
+.team-header img{width:54px;height:54px;object-fit:contain}
+.team-header-info h2{font-size:19px;font-weight:900}
+.team-header-info p{font-size:12px;color:var(--muted2);margin-top:4px;display:flex;align-items:center;gap:5px}
+.team-header-info p img{width:14px;height:10px;object-fit:contain}
 
-  /* Fav button */
-  .fav-btn{width:100%;border:1px solid #f4433655;background:#f4433615;color:#f44336;border-radius:10px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;margin-top:10px;transition:all .2s}
-  .fav-btn.is-fav{border-color:#00c85355;background:#00c85315;color:var(--win)}
-  .fav-btn:active{opacity:.8}
+/* ── Fav button ── */
+.fav-btn{width:100%;border:1.5px solid #ef535055;background:#ef535015;color:var(--lose);border-radius:12px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;margin-top:10px;transition:all .2s}
+.fav-btn.is-fav{border-color:#00e67655;background:#00e67615;color:var(--win)}
+.fav-btn:active{opacity:.8}
 
-  /* Favoris */
-  .fav-card{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:8px}
-  .fav-card img{width:36px;height:36px;object-fit:contain}
-  .fav-card-info{flex:1}
-  .fav-card-info h3{font-size:14px;font-weight:700}
-  .fav-card-info p{font-size:12px;color:var(--muted);margin-top:2px}
-  .fav-card-btn{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:4px}
-  .fav-analyse-btn{background:var(--accent);color:#000;border:none;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer}
+/* ── Favoris ── */
+.fav-card{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:8px}
+.fav-card img{width:38px;height:38px;object-fit:contain}
+.fav-card-info{flex:1;min-width:0}
+.fav-card-info h3{font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fav-card-info p{font-size:11px;color:var(--muted);margin-top:2px}
+.fav-card-btn{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:4px;flex-shrink:0}
+.fav-analyse-btn{background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent-border);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0}
 
-  /* Premium lock overlay */
-  .premium-lock{background:linear-gradient(135deg,#1a1600,#1a1000);border:1px solid #ffd70044;border-radius:12px;padding:16px;text-align:center;margin:10px 0}
-  .premium-lock-icon{font-size:28px;margin-bottom:6px}
-  .premium-lock-text{font-size:13px;color:var(--muted);margin-bottom:10px}
+/* ── Coupon ── */
+.coupon-header{background:linear-gradient(135deg,#1a1400,#1c1800);border:1px solid var(--gold-border);border-radius:var(--r);padding:16px;margin-bottom:12px;text-align:center}
+.coupon-title{font-size:18px;font-weight:900;color:var(--gold);letter-spacing:.3px}
+.coupon-date{font-size:11px;color:var(--muted);margin-top:4px}
+.coupon-match{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:8px}
+.coupon-match-teams{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.coupon-team{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;flex:1;min-width:0}
+.coupon-team img{width:20px;height:20px;object-fit:contain;flex-shrink:0}
+.coupon-team-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.coupon-vs{font-size:11px;color:var(--muted);font-weight:700;flex-shrink:0;padding:0 6px}
+.coupon-prono{display:flex;align-items:center;justify-content:space-between}
+.prono-badge{font-size:13px;font-weight:900;padding:6px 14px;border-radius:8px;letter-spacing:.5px}
+.prono-badge.p1{background:#00e67620;color:var(--win);border:1px solid #00e67640}
+.prono-badge.pN{background:#ffb74d20;color:var(--draw);border:1px solid #ffb74d40}
+.prono-badge.p2{background:#ef535020;color:var(--lose);border:1px solid #ef535040}
+.coupon-cote{font-size:14px;color:var(--gold);font-weight:900}
+.coupon-stars{font-size:11px;color:var(--muted);margin-top:2px}
+.coupon-total{background:linear-gradient(135deg,#071a0d,#0a2010);border:1px solid var(--accent-border);border-radius:12px;padding:16px;text-align:center;margin-top:4px}
+.coupon-total-label{font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+.coupon-total-value{font-size:32px;font-weight:900;background:linear-gradient(135deg,var(--accent),#69f0ae);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 
-  /* Record bar */
-  .record-bar{display:flex;gap:3px;height:8px;border-radius:4px;overflow:hidden;margin:6px 0}
-  .record-bar .seg-w{background:var(--win)}
-  .record-bar .seg-d{background:var(--draw)}
-  .record-bar .seg-l{background:var(--lose)}
+/* ── Premium ── */
+.plan-card{background:var(--card);border:1.5px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:10px;cursor:pointer;transition:border-color .2s}
+.plan-card.featured{border-color:var(--gold);background:linear-gradient(135deg,#1a1500,#161200)}
+.plan-card:active{opacity:.9}
+.plan-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.plan-name{font-size:16px;font-weight:800}
+.plan-badge{font-size:10px;font-weight:800;padding:3px 9px;border-radius:20px;background:var(--gold-dim);color:var(--gold);border:1px solid var(--gold-border);letter-spacing:.3px}
+.plan-price{font-size:28px;font-weight:900;color:var(--accent)}
+.plan-price span{font-size:14px;color:var(--muted);font-weight:500}
+.plan-feat{font-size:12px;color:var(--muted2);padding:3px 0;display:flex;align-items:center;gap:6px}
+.plan-feat::before{content:'✓';color:var(--accent);font-weight:800}
+.plan-btn{width:100%;background:linear-gradient(135deg,#00e676,#00c853);color:#000;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;margin-top:12px;letter-spacing:.3px}
+.plan-btn.gold{background:linear-gradient(135deg,#ffd54f,#ff8f00)}
+.plan-btn:active{opacity:.85}
 
-  /* Coupon */
-  .coupon-header{background:linear-gradient(135deg,#1a1200,#1a1600);border:1px solid #ffd70044;border-radius:14px;padding:16px;margin-bottom:12px;text-align:center}
-  .coupon-title{font-size:18px;font-weight:800;color:var(--gold)}
-  .coupon-date{font-size:12px;color:var(--muted);margin-top:4px}
-  .coupon-match{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:8px}
-  .coupon-match-teams{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-  .coupon-team{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600}
-  .coupon-team img{width:22px;height:22px;object-fit:contain}
-  .coupon-vs{font-size:12px;color:var(--muted);font-weight:700}
-  .coupon-prono{display:flex;align-items:center;justify-content:space-between}
-  .prono-badge{font-size:14px;font-weight:800;padding:6px 14px;border-radius:8px}
-  .prono-badge.p1{background:#00c85322;color:var(--win);border:1px solid #00c85344}
-  .prono-badge.pN{background:#ffc10722;color:var(--draw);border:1px solid #ffc10744}
-  .prono-badge.p2{background:#f4433622;color:var(--lose);border:1px solid #f4433644}
-  .coupon-cote{font-size:13px;color:var(--gold);font-weight:700}
-  .coupon-stars{font-size:12px;color:var(--muted)}
-  .coupon-total{background:linear-gradient(135deg,#0a2e0a,#0d3a0d);border:1px solid #00c85344;border-radius:12px;padding:14px;text-align:center;margin-top:4px}
-  .coupon-total-label{font-size:12px;color:var(--muted);margin-bottom:4px}
-  .coupon-total-value{font-size:28px;font-weight:800;color:var(--accent2)}
+/* ── Profil ── */
+.profile-hero{background:linear-gradient(135deg,#0d1a0d,#0d150d);border:1px solid var(--border);border-radius:var(--r);padding:20px;margin-bottom:12px;text-align:center}
+.profile-avatar{width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#00e676,#00c853);display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 12px;border:3px solid var(--accent-border)}
+.profile-name{font-size:20px;font-weight:900;margin-bottom:4px}
+.profile-handle{font-size:13px;color:var(--muted)}
+.profile-plan-badge{display:inline-flex;align-items:center;gap:6px;background:var(--gold-dim);color:var(--gold);border:1px solid var(--gold-border);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:800;margin-top:10px}
+.profile-plan-badge.free{background:var(--card2);color:var(--muted2);border-color:var(--border)}
+.profile-stat{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border)}
+.profile-stat:last-child{border-bottom:none}
+.profile-stat-label{font-size:13px;color:var(--muted2);display:flex;align-items:center;gap:8px}
+.profile-stat-value{font-size:13px;font-weight:700;color:var(--text)}
+.profile-stat-value.accent{color:var(--accent)}
+.profile-stat-value.gold{color:var(--gold)}
+.progress-bar{height:5px;background:var(--border);border-radius:3px;margin-top:6px;overflow:hidden}
+.progress-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#00c853,#00e676);transition:width .6s}
 
-  /* Premium */
-  .plan-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:10px;cursor:pointer}
-  .plan-card.featured{border-color:#ffd700;background:#1a1600}
-  .plan-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-  .plan-name{font-size:16px;font-weight:700}
-  .plan-badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;background:#ffd70022;color:#ffd700;border:1px solid #ffd70044}
-  .plan-price{font-size:26px;font-weight:800;color:var(--accent2)}
-  .plan-price span{font-size:14px;color:var(--muted);font-weight:400}
-  .plan-feat{font-size:13px;color:var(--muted);padding:3px 0}
-  .plan-feat::before{content:'✓ ';color:var(--accent)}
-  .plan-btn{width:100%;background:var(--accent);color:#000;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;margin-top:12px}
-  .plan-btn.gold{background:linear-gradient(135deg,#ffd700,#ff8c00)}
+/* ── Premium lock ── */
+.premium-lock{background:linear-gradient(135deg,#141200,#181500);border:1px solid var(--gold-border);border-radius:12px;padding:18px;text-align:center;margin:10px 0}
+.premium-lock-icon{font-size:28px;margin-bottom:8px}
 
-  /* Loader */
-  .loader{text-align:center;padding:40px 0;color:var(--muted)}
-  .spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  .empty{text-align:center;padding:40px 16px;color:var(--muted);font-size:15px}
-  .empty .big{font-size:40px;display:block;margin-bottom:10px}
-  .disclaimer{color:var(--muted);font-size:11px;text-align:center;padding:8px}
+/* ── Record bar ── */
+.record-bar{display:flex;height:6px;border-radius:3px;overflow:hidden;margin:5px 0;gap:1px}
+.record-bar .seg-w{background:var(--win)}
+.record-bar .seg-d{background:var(--draw)}
+.record-bar .seg-l{background:var(--lose)}
+
+/* ── Utils ── */
+.loader{text-align:center;padding:48px 0;color:var(--muted)}
+.spinner{width:34px;height:34px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 14px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{text-align:center;padding:48px 16px;color:var(--muted)}
+.empty .big{font-size:44px;display:block;margin-bottom:12px}
+.disclaimer{color:var(--muted);font-size:11px;text-align:center;padding:10px 0;line-height:1.5}
+.section-title{font-size:16px;font-weight:800;margin-bottom:12px;display:flex;align-items:center;gap:8px}
 </style>
 </head>
 <body>
 
 <div class="header">
-  <div class="header-top">
-    <div class="logo">⚽ BAGA BET <span>Statistiques & Analyses</span></div>
-    <div class="premium-badge" onclick="showPage('premium')">💎 Premium</div>
+  <div class="header-inner">
+    <div class="logo">
+      <div class="logo-icon">⚽</div>
+      <div><div class="logo-text">BAGA BET</div><div class="logo-sub">Statistiques & Pronostics</div></div>
+    </div>
+    <div class="premium-pill" onclick="showPage('premium')">💎 Premium</div>
   </div>
 </div>
 
@@ -192,7 +228,7 @@
     <span class="search-icon">🔍</span>
     <input class="search-input" id="search-input" type="text" placeholder="Ex: Barca, PSG, Real, Bayern..." autocomplete="off">
   </div>
-  <button class="search-btn" onclick="doAnalyse()">📊 Analyser</button>
+  <button class="search-btn" onclick="doAnalyse()">📊 Analyser l'équipe</button>
   <div id="analyse-content"></div>
 </div>
 
@@ -204,22 +240,28 @@
   <div id="coupon-content"><div class="loader"><div class="spinner"></div>Génération du coupon...</div></div>
 </div>
 
+<div id="page-profil" class="page">
+  <div id="profil-content"><div class="loader"><div class="spinner"></div>Chargement du profil...</div></div>
+</div>
+
 <div id="page-premium" class="page">
-  <div class="card" style="background:linear-gradient(135deg,#1a1600,#1a1000);border-color:#ffd70044;margin-bottom:14px;">
-    <div style="text-align:center;padding:8px 0">
-      <div style="font-size:32px">💎</div>
-      <div style="font-size:18px;font-weight:800;margin:8px 0 4px">BAGA BET Premium</div>
-      <div style="font-size:13px;color:var(--muted)">Accès illimité à toutes les fonctionnalités</div>
+  <div class="section-title">💎 Passer Premium</div>
+  <div class="card" style="background:linear-gradient(135deg,#141200,#1a1700);border-color:var(--gold-border);margin-bottom:14px;">
+    <div style="text-align:center;padding:6px 0">
+      <div style="font-size:36px;margin-bottom:8px">💎</div>
+      <div style="font-size:17px;font-weight:900;margin-bottom:4px">BAGA BET Premium</div>
+      <div style="font-size:12px;color:var(--muted)">Accès illimité à toutes les fonctionnalités</div>
     </div>
   </div>
   <div class="plan-card" onclick="selectPlan('mensuel')">
     <div class="plan-header"><span class="plan-name">Mensuel</span></div>
     <div class="plan-price">2 500 <span>FCFA / mois</span></div>
     <div style="margin-top:10px">
-      <div class="plan-feat">Analyses illimitées</div>
+      <div class="plan-feat">Analyses illimitées + H2H</div>
       <div class="plan-feat">10 équipes favorites</div>
-      <div class="plan-feat">Coupons du jour illimités</div>
-      <div class="plan-feat">Matchs en temps réel</div>
+      <div class="plan-feat">Coupon 8-10 matchs</div>
+      <div class="plan-feat">Historique des coupons</div>
+      <div class="plan-feat">Alertes matchs favoris</div>
     </div>
     <button class="plan-btn">Choisir ce plan</button>
   </div>
@@ -247,45 +289,78 @@
     <div class="card-title">📱 Instructions de paiement</div>
     <div id="payment-instructions"></div>
   </div>
+
+  <!-- Promo 1xbet -->
+  <div style="background:linear-gradient(135deg,#0d0a1a,#120d22);border:1.5px solid #7c3aed55;border-radius:var(--r);padding:16px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <div style="width:38px;height:38px;background:linear-gradient(135deg,#7c3aed,#a855f7);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🎁</div>
+      <div>
+        <div style="font-weight:800;font-size:15px">Code Promo 1xbet</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">Partenaire officiel · 30 jours Premium offerts</div>
+      </div>
+    </div>
+    <div style="font-size:13px;color:var(--muted2);margin-bottom:12px;line-height:1.5">
+      Inscrivez-vous sur <b style="color:#a855f7">1xbet</b> avec notre code partenaire et obtenez <b style="color:var(--text)">30 jours de Premium gratuit</b>.
+    </div>
+    <div style="background:var(--card2);border-radius:10px;padding:12px;margin-bottom:12px;border:1px solid var(--border);text-align:center">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Code partenaire 1xbet</div>
+      <div style="font-size:22px;font-weight:900;letter-spacing:3px;color:#a855f7">1x_5737357</div>
+    </div>
+    <div id="promo-input-section">
+      <div style="font-size:12px;color:var(--muted2);margin-bottom:8px">Après inscription, entrez le code ici pour activer votre Premium :</div>
+      <div style="display:flex;gap:8px">
+        <input id="promo-code-input" type="text" placeholder="Entrez le code promo..." style="flex:1;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;padding:11px 12px;color:var(--text);font-size:14px;outline:none" oninput="this.style.borderColor='#7c3aed55'">
+        <button onclick="activatePromo()" style="background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;border:none;border-radius:10px;padding:11px 16px;font-size:14px;font-weight:800;cursor:pointer;flex-shrink:0">✓</button>
+      </div>
+    </div>
+    <div id="promo-result" style="display:none"></div>
+  </div>
 </div>
 
-<!-- Navigation 5 onglets -->
+<!-- Navigation -->
 <nav class="nav">
   <button class="nav-btn active" id="nav-matchs" onclick="showPage('matchs')">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>
     Matchs
+    <div class="nav-indicator"></div>
   </button>
   <button class="nav-btn" id="nav-analyse" onclick="showPage('analyse')">
     <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
     Analyse
+    <div class="nav-indicator"></div>
   </button>
   <button class="nav-btn" id="nav-favoris" onclick="showPage('favoris')">
     <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
     Favoris
+    <div class="nav-indicator"></div>
   </button>
   <button class="nav-btn" id="nav-coupon" onclick="showPage('coupon')">
     <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
     Coupon
+    <div class="nav-indicator"></div>
   </button>
-  <button class="nav-btn" id="nav-premium" onclick="showPage('premium')">
-    <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-    Premium
+  <button class="nav-btn" id="nav-profil" onclick="showPage('profil')">
+    <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    Profil
+    <div class="nav-indicator"></div>
   </button>
 </nav>
 
 <script>
 const tg = window.Telegram?.WebApp;
-if (tg) { tg.expand(); }
+if (tg) { tg.expand(); tg.setHeaderColor?.('#0a0a0f'); }
 
 const BASE = window.location.origin;
 const PLANS = { mensuel:{label:'Mensuel',amount:2500,days:30}, trimestriel:{label:'Trimestriel',amount:6000,days:90}, annuel:{label:'Annuel',amount:20000,days:365} };
 const PAYMENT_PHONE = '79281868';
 const PAYMENT_NAME = 'Mamadou Bayoko';
-const userId = tg?.initDataUnsafe?.user?.id || null;
 
-// Favoris locaux (sync avec serveur)
+const tgUser = tg?.initDataUnsafe?.user || null;
+const userId = tgUser?.id || null;
+
 let myFavorites = JSON.parse(localStorage.getItem('bb_favorites') || '[]');
 let currentTeam = null;
+let profileData = null;
 
 function showPage(name) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -295,6 +370,7 @@ function showPage(name) {
   if (name === 'matchs' && !matchTabLoaded.today) loadMatchs();
   if (name === 'favoris') loadFavoris();
   if (name === 'coupon' && !document.getElementById('coupon-loaded')) loadCoupon();
+  if (name === 'profil') loadProfil();
 }
 
 // ── Matchs ────────────────────────────────────────────────────────
@@ -308,6 +384,24 @@ function switchMatchTab(tab) {
   if (tab === 'upcoming' && !matchTabLoaded.upcoming) loadUpcoming();
 }
 
+function matchCardHtml(m, upcoming) {
+  const isScheduled = ['SCHEDULED','TIMED'].includes(m.status);
+  const isLive = ['IN_PLAY','PAUSED','HALF_TIME'].includes(m.status);
+  const scoreBlock = upcoming || isScheduled
+    ? `<div class="match-score time">${m.time}</div>`
+    : isLive
+      ? `<div class="match-score live">⚡ ${m.scoreHome??0}-${m.scoreAway??0}</div>`
+      : `<div class="match-score">${m.scoreHome??'-'} - ${m.scoreAway??'-'}</div>`;
+  return `<div class="match-card">
+    <div class="match-league-row"><img src="${m.leagueLogo||''}" onerror="this.style.display='none'">${m.league||''}</div>
+    <div class="match-row">
+      <div class="match-team"><img src="${m.homeLogo||''}" onerror="this.src=''" width="28" height="28"><span class="match-team-name">${m.home}</span></div>
+      <div class="match-score-wrap">${scoreBlock}</div>
+      <div class="match-team right"><img src="${m.awayLogo||''}" onerror="this.src=''" width="28" height="28"><span class="match-team-name">${m.away}</span></div>
+    </div>
+  </div>`;
+}
+
 function buildMatchCards(matches, groupByDate) {
   if (!matches?.length) return `<div class="empty"><span class="big">📭</span>Aucun match disponible.</div>`;
   const byGroup = {};
@@ -319,40 +413,18 @@ function buildMatchCards(matches, groupByDate) {
   let html = '';
   for (const [label, grp] of Object.entries(byGroup)) {
     if (groupByDate) {
-      html += `<div class="date-sep">📅 ${label}</div>`;
-      // par ligue dans chaque jour
+      html += `<div class="date-sep">${label}</div>`;
       const byLeague = {};
       for (const m of grp.matches) {
-        if (!byLeague[m.league]) byLeague[m.league] = { logo: m.leagueLogo, matches: [] };
-        byLeague[m.league].matches.push(m);
+        if (!byLeague[m.league]) byLeague[m.league] = [];
+        byLeague[m.league].push(m);
       }
-      for (const [league, lgrp] of Object.entries(byLeague)) {
-        html += `<div class="card-title"><img src="${lgrp.logo||''}" onerror="this.style.display='none'"> ${league}</div>`;
-        for (const m of lgrp.matches) html += matchCardHtml(m, true);
-      }
+      for (const ms of Object.values(byLeague)) for (const m of ms) html += matchCardHtml(m, true);
     } else {
-      html += `<div class="card-title"><img src="${grp.logo||''}" onerror="this.style.display='none'"> ${label}</div>`;
       for (const m of grp.matches) html += matchCardHtml(m, false);
     }
   }
   return html;
-}
-
-function matchCardHtml(m, upcoming) {
-  const isScheduled = ['SCHEDULED','TIMED'].includes(m.status);
-  const isLive = ['IN_PLAY','PAUSED','HALF_TIME'].includes(m.status);
-  const scoreBlock = upcoming || isScheduled
-    ? `<div class="match-score time">${m.time}</div>`
-    : isLive
-      ? `<div class="match-score live">⚡ ${m.scoreHome??0}-${m.scoreAway??0}</div>`
-      : `<div class="match-score">${m.scoreHome??'-'}-${m.scoreAway??'-'}</div>`;
-  return `<div class="match-card">
-    <div class="match-row">
-      <div class="match-team"><img src="${m.homeLogo||''}" onerror="this.src=''" width="26" height="26"><span class="match-team-name">${m.home}</span></div>
-      ${scoreBlock}
-      <div class="match-team right"><img src="${m.awayLogo||''}" onerror="this.src=''" width="26" height="26"><span class="match-team-name">${m.away}</span></div>
-    </div>
-  </div>`;
 }
 
 async function loadMatchs(force) {
@@ -363,9 +435,9 @@ async function loadMatchs(force) {
     const data = await res.json();
     if (!data.matches?.length) {
       if (data.loading) {
-        el.innerHTML = `<div class="empty"><span class="big">⏳</span>Chargement des matchs en cours...<br><small style="color:var(--muted)">Première ouverture — 1 à 2 minutes</small><br><br><button class="search-btn" style="max-width:220px;margin:0 auto;display:block;margin-top:12px" onclick="setTimeout(loadMatchs,5000);this.textContent='⏳ Actualisation...'">🔄 Réessayer dans 5s</button></div>`;
+        el.innerHTML = `<div class="empty"><span class="big">⏳</span><b>Chargement en cours...</b><br><small style="color:var(--muted);display:block;margin-top:6px">Première ouverture — encore 1-2 min</small><br><button class="search-btn" style="max-width:200px;margin:12px auto 0;display:block" onclick="setTimeout(()=>loadMatchs(true),5000);this.textContent='⏳ Actualisation...'">🔄 Réessayer</button></div>`;
       } else {
-        el.innerHTML = `<div class="empty"><span class="big">😴</span>Pas de match aujourd'hui dans les ligues disponibles.<br><br><button class="search-btn" style="max-width:220px;margin:0 auto;display:block" onclick="switchMatchTab('upcoming')">🔜 Voir les matchs à venir</button></div>`;
+        el.innerHTML = `<div class="empty"><span class="big">😴</span>Pas de match aujourd'hui.<br><br><button class="search-btn" style="max-width:220px;margin:0 auto;display:block" onclick="switchMatchTab('upcoming')">🔜 Voir les matchs à venir</button></div>`;
       }
     } else {
       el.innerHTML = buildMatchCards(data.matches, false);
@@ -378,7 +450,7 @@ async function loadMatchs(force) {
 
 async function loadUpcoming() {
   const el = document.getElementById('matchs-upcoming');
-  el.innerHTML = `<div class="loader"><div class="spinner"></div>Chargement des matchs à venir...</div>`;
+  el.innerHTML = `<div class="loader"><div class="spinner"></div>Chargement...</div>`;
   try {
     const res = await fetch(BASE + '/api/matchs-a-venir');
     const data = await res.json();
@@ -416,79 +488,57 @@ async function doAnalyse() {
       const r = gf>ga?'W':gf===ga?'D':'L';
       const lbl = r==='W'?'Victoire':r==='D'?'Nul':'Défaite';
       return `<div class="last-match">
-        <div class="last-match-opp"><img src="${m.opponentLogo||''}" onerror="this.style.display='none'" width="22" height="22">${m.isHome?'vs':'@'} ${m.opponent}</div>
-        <div style="display:flex;align-items:center;gap:8px"><span style="font-weight:700">${gf}-${ga}</span><span class="result-tag ${r}">${lbl}</span></div>
+        <div class="last-match-opp"><img src="${m.opponentLogo||''}" onerror="this.style.display='none'" width="20" height="20">${m.isHome?'vs':'@'} ${m.opponent}</div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="font-weight:800">${gf}-${ga}</span><span class="result-tag ${r}">${lbl}</span></div>
       </div>`;
     }).join('');
 
-    // Sections premium
     let premiumHtml = '';
     if (isPremium) {
-      // Prochain match
       if (d.nextMatch) {
         const nm = d.nextMatch;
-        premiumHtml += `<div class="card" style="border-color:#ffd70044">
+        premiumHtml += `<div class="card" style="border-color:var(--gold-border)">
           <div class="card-title" style="color:var(--gold)">🔜 Prochain match</div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <img src="${nm.opponentLogo||''}" onerror="this.style.display='none'" width="32" height="32">
-            <div>
-              <div style="font-weight:700;font-size:14px">${nm.isHome?'vs':'@'} ${nm.opponent}</div>
-              <div style="font-size:12px;color:var(--muted)">${nm.date} à ${nm.time}</div>
-              <div style="font-size:11px;color:var(--muted)">${nm.competition||''}</div>
-            </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <img src="${nm.opponentLogo||''}" onerror="this.style.display='none'" width="36" height="36">
+            <div><div style="font-weight:800;font-size:14px">${nm.isHome?'vs':'@'} ${nm.opponent}</div>
+            <div style="font-size:12px;color:var(--muted2);margin-top:3px">${nm.date} · ${nm.time}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${nm.competition||''}</div></div>
           </div>
         </div>`;
       }
-      // Domicile vs extérieur
       if (d.homeRecord && d.awayRecord) {
         const hr = d.homeRecord, ar = d.awayRecord;
-        const hTotal = (hr.w+hr.d+hr.l)||1, aTotal = (ar.w+ar.d+ar.l)||1;
-        premiumHtml += `<div class="card" style="border-color:#ffd70044">
-          <div class="card-title" style="color:var(--gold)">🏠 Dom. vs Extérieur (10 derniers)</div>
+        premiumHtml += `<div class="card" style="border-color:var(--gold-border)">
+          <div class="card-title" style="color:var(--gold)">🏠 Dom. vs Extérieur (10 matchs)</div>
           <div style="margin-bottom:10px">
-            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span>🏠 Domicile</span><span style="color:var(--muted)">${hr.w}V ${hr.d}N ${hr.l}D</span></div>
-            <div class="record-bar">
-              <div class="seg-w" style="flex:${hr.w}"></div>
-              <div class="seg-d" style="flex:${hr.d}"></div>
-              <div class="seg-l" style="flex:${hr.l}"></div>
-            </div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="font-weight:600">🏠 Domicile</span><span style="color:var(--muted)">${hr.w}V · ${hr.d}N · ${hr.l}D</span></div>
+            <div class="record-bar"><div class="seg-w" style="flex:${hr.w||0}"></div><div class="seg-d" style="flex:${hr.d||0}"></div><div class="seg-l" style="flex:${hr.l||0.1}"></div></div>
           </div>
           <div>
-            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span>✈️ Extérieur</span><span style="color:var(--muted)">${ar.w}V ${ar.d}N ${ar.l}D</span></div>
-            <div class="record-bar">
-              <div class="seg-w" style="flex:${ar.w}"></div>
-              <div class="seg-d" style="flex:${ar.d}"></div>
-              <div class="seg-l" style="flex:${ar.l}"></div>
-            </div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="font-weight:600">✈️ Extérieur</span><span style="color:var(--muted)">${ar.w}V · ${ar.d}N · ${ar.l}D</span></div>
+            <div class="record-bar"><div class="seg-w" style="flex:${ar.w||0}"></div><div class="seg-d" style="flex:${ar.d||0}"></div><div class="seg-l" style="flex:${ar.l||0.1}"></div></div>
           </div>
         </div>`;
       }
-      // H2H
       if (d.h2h?.length) {
-        const h2hRows = d.h2h.map(m => {
-          const r = m.goalsFor>m.goalsAgainst?'W':m.goalsFor===m.goalsAgainst?'D':'L';
-          return `<div class="last-match">
-            <div class="last-match-opp">${m.isHome?'vs':'@'} ${m.opponent}</div>
-            <div style="display:flex;align-items:center;gap:8px"><span style="font-weight:700">${m.goalsFor}-${m.goalsAgainst}</span><span class="result-tag ${r}">${r==='W'?'V':r==='D'?'N':'D'}</span></div>
-          </div>`;
-        }).join('');
-        premiumHtml += `<div class="card" style="border-color:#ffd70044">
-          <div class="card-title" style="color:var(--gold)">⚔️ H2H (confrontations directes)</div>
-          ${h2hRows}
+        premiumHtml += `<div class="card" style="border-color:var(--gold-border)">
+          <div class="card-title" style="color:var(--gold)">⚔️ Confrontations directes</div>
+          ${d.h2h.map(m=>{const r=m.goalsFor>m.goalsAgainst?'W':m.goalsFor===m.goalsAgainst?'D':'L';return `<div class="last-match"><div class="last-match-opp">${m.isHome?'vs':'@'} ${m.opponent}</div><div style="display:flex;align-items:center;gap:8px"><span style="font-weight:800">${m.goalsFor}-${m.goalsAgainst}</span><span class="result-tag ${r}">${r==='W'?'V':r==='D'?'N':'D'}</span></div></div>`;}).join('')}
         </div>`;
       }
     } else {
       premiumHtml = `<div class="premium-lock">
         <div class="premium-lock-icon">💎</div>
-        <div style="font-weight:700;margin-bottom:4px">Fonctionnalités Premium</div>
-        <div class="premium-lock-text">Prochain match, domicile/extérieur, H2H disponibles avec Premium</div>
+        <div style="font-weight:800;font-size:14px;margin-bottom:6px">Fonctionnalités Premium</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Prochain match · Dom/Extérieur · H2H</div>
         <button class="plan-btn" style="margin:0" onclick="showPage('premium')">Passer Premium</button>
       </div>`;
     }
 
     el.innerHTML = `
       <div class="team-header">
-        <img src="${d.team.logo||''}" onerror="this.style.display='none'" width="52" height="52">
+        <img src="${d.team.logo||''}" onerror="this.style.display='none'" width="54" height="54">
         <div class="team-header-info">
           <h2>${d.team.name}</h2>
           <p><img src="${d.league?.logo||''}" onerror="this.style.display='none'"> ${d.league?.name||''} — ${d.season}</p>
@@ -504,7 +554,7 @@ async function doAnalyse() {
         <div class="form-row">${formHtml||'<span style="color:var(--muted)">N/A</span>'}</div>
       </div>
       <div class="card">
-        <div class="card-title">⚽ Buts</div>
+        <div class="card-title">⚽ Buts moyens / match</div>
         <div class="goals-row"><span class="goals-label">Marqués</span><div class="goals-bar"><div class="goals-fill for" style="width:${pctFor}%"></div></div><span class="goals-val" style="color:var(--win)">${d.goalsFor}/m</span></div>
         <div class="goals-row"><span class="goals-label">Encaissés</span><div class="goals-bar"><div class="goals-fill against" style="width:${pctAga}%"></div></div><span class="goals-val" style="color:var(--lose)">${d.goalsAgainst}/m</span></div>
       </div>
@@ -513,7 +563,7 @@ async function doAnalyse() {
       <button class="fav-btn ${isFav?'is-fav':''}" onclick="toggleFavorite()" id="fav-btn">
         ${isFav ? '💔 Retirer des favoris' : '❤️ Ajouter aux favoris'}
       </button>
-      <div class="disclaimer">⚠️ Données statistiques à titre informatif.</div>`;
+      <div class="disclaimer">⚠️ Données statistiques à titre informatif. Pariez responsablement.</div>`;
   } catch(e) {
     el.innerHTML = `<div class="empty">⚠️ Erreur de connexion</div>`;
   }
@@ -526,41 +576,39 @@ async function toggleFavorite() {
     myFavorites = myFavorites.filter(f => f.name !== currentTeam.name);
   } else {
     if (myFavorites.length >= 3) {
-      if (tg) tg.showAlert('Limite de 3 équipes atteinte.\nPassez Premium pour en ajouter plus !');
+      if (tg) tg.showAlert('Limite de 3 équipes atteinte.\nPassez Premium pour en ajouter jusqu\'à 10 !');
+      else alert('Limite de 3 équipes. Passez Premium !');
       return;
     }
-    myFavorites.push({ name: currentTeam.name, logo: currentTeam.logo, competition: document.querySelector('.team-header-info p')?.textContent });
+    myFavorites.push({ name: currentTeam.name, logo: currentTeam.logo, competition: document.querySelector('.team-header-info p')?.textContent?.trim() });
   }
   localStorage.setItem('bb_favorites', JSON.stringify(myFavorites));
   const btn = document.getElementById('fav-btn');
   const newIsFav = myFavorites.some(f => f.name === currentTeam.name);
-  btn.className = `fav-btn ${newIsFav ? 'is-fav' : ''}`;
+  btn.className = `fav-btn ${newIsFav?'is-fav':''}`;
   btn.textContent = newIsFav ? '💔 Retirer des favoris' : '❤️ Ajouter aux favoris';
-  if (tg) tg.showAlert(newIsFav ? `❤️ ${currentTeam.name} ajouté !` : `Retiré des favoris.`);
 }
 
 // ── Favoris ───────────────────────────────────────────────────────
 function loadFavoris() {
   const el = document.getElementById('favoris-content');
   if (!myFavorites.length) {
-    el.innerHTML = `<div class="empty"><span class="big">❤️</span>Aucune équipe favorite.<br><br>Faites une analyse et cliquez <b>❤️ Ajouter aux favoris</b>.</div>`;
+    el.innerHTML = `<div class="empty"><span class="big">❤️</span>Aucune équipe favorite.<br><br>Analysez une équipe puis cliquez <b>❤️ Ajouter aux favoris</b>.</div>`;
     return;
   }
-  let html = `<div style="font-size:13px;color:var(--muted);margin-bottom:12px">⭐ ${myFavorites.length} équipe${myFavorites.length>1?'s':''} favorite${myFavorites.length>1?'s':''} (max 3 gratuit)</div>`;
+  let html = `<div style="font-size:12px;color:var(--muted);margin-bottom:12px">⭐ ${myFavorites.length}/3 équipe${myFavorites.length>1?'s':''} (gratuit)</div>`;
   for (const fav of myFavorites) {
     html += `<div class="fav-card">
-      <img src="${fav.logo||''}" onerror="this.style.display='none'" width="36" height="36">
-      <div class="fav-card-info">
-        <h3>${fav.name}</h3>
-        <p>${fav.competition||''}</p>
-      </div>
+      <img src="${fav.logo||''}" onerror="this.style.display='none'" width="38" height="38">
+      <div class="fav-card-info"><h3>${fav.name}</h3><p>${fav.competition||''}</p></div>
       <button class="fav-analyse-btn" onclick="analyseFromFav('${fav.name.replace(/'/g,"\\'")}')">📊 Analyser</button>
       <button class="fav-card-btn" onclick="removeFav('${fav.name.replace(/'/g,"\\'")}')">🗑️</button>
     </div>`;
   }
-  html += `<div style="margin-top:12px;background:linear-gradient(135deg,#1a1600,#1a1000);border:1px solid #ffd70044;border-radius:12px;padding:14px;text-align:center">
-    <div style="font-size:14px;font-weight:700;color:var(--gold);margin-bottom:6px">💎 Premium — 10 équipes</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Ajoutez jusqu'à 10 équipes favorites</div>
+  html += `<div class="premium-lock" style="margin-top:14px">
+    <div style="font-size:20px;margin-bottom:6px">💎</div>
+    <div style="font-weight:800;font-size:14px;margin-bottom:4px">Premium — jusqu'à 10 équipes</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">+ Alertes quand vos équipes jouent</div>
     <button class="plan-btn" style="margin:0" onclick="showPage('premium')">Passer Premium</button>
   </div>`;
   el.innerHTML = html;
@@ -580,43 +628,40 @@ function removeFav(teamName) {
 
 // ── Coupon ────────────────────────────────────────────────────────
 function buildCouponHtml(d, showHistoryBtn) {
-  const starsHtml = n => '⭐'.repeat(n);
+  const stars = n => '⭐'.repeat(n);
   let html = `<div id="coupon-loaded"></div>
   <div class="coupon-header">
-    <div class="coupon-title">🎯 Coupon ${d.isPremium ? '💎 Premium' : 'du jour'}</div>
+    <div class="coupon-title">🎯 Coupon ${d.isPremium?'💎 Premium':'du jour'}</div>
     <div class="coupon-date">📅 ${d.date}</div>
-    ${d.isPremium ? '<div style="font-size:11px;color:var(--gold);margin-top:4px">✨ ' + d.matches.length + ' matchs sélectionnés</div>' : ''}
+    ${d.isPremium?`<div style="font-size:11px;color:var(--gold);margin-top:4px">✨ ${d.matches.length} matchs sélectionnés</div>`:''}
   </div>`;
   for (const m of d.matches) {
     const cls = m.prono==='1'?'p1':m.prono==='N'?'pN':'p2';
     html += `<div class="coupon-match">
       <div class="coupon-match-teams">
-        <div class="coupon-team"><img src="${m.homeLogo||''}" onerror="this.style.display='none'" width="22" height="22">${m.home}</div>
+        <div class="coupon-team"><img src="${m.homeLogo||''}" onerror="this.style.display='none'" width="20" height="20"><span class="coupon-team-name">${m.home}</span></div>
         <span class="coupon-vs">vs</span>
-        <div class="coupon-team"><img src="${m.awayLogo||''}" onerror="this.style.display='none'" width="22" height="22">${m.away}</div>
+        <div class="coupon-team" style="justify-content:flex-end"><span class="coupon-team-name">${m.away}</span><img src="${m.awayLogo||''}" onerror="this.style.display='none'" width="20" height="20"></div>
       </div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">🏆 ${m.league} | 🕐 ${m.time}</div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px">🏆 ${m.league} · 🕐 ${m.time}</div>
       <div class="coupon-prono">
-        <div><span class="prono-badge ${cls}">${m.prono}</span><span style="font-size:12px;color:var(--muted);margin-left:8px">${m.label}</span></div>
-        <div style="text-align:right"><div class="coupon-cote">x${m.cote}</div><div class="coupon-stars">${starsHtml(m.stars)}</div></div>
+        <div><span class="prono-badge ${cls}">${m.prono}</span><span style="font-size:12px;color:var(--muted2);margin-left:8px">${m.label}</span></div>
+        <div style="text-align:right"><div class="coupon-cote">×${m.cote}</div><div class="coupon-stars">${stars(m.stars)}</div></div>
       </div>
     </div>`;
   }
-  html += `<div class="coupon-total">
-    <div class="coupon-total-label">Cote combinée</div>
-    <div class="coupon-total-value">x${d.coteCombinee}</div>
-  </div>`;
+  html += `<div class="coupon-total"><div class="coupon-total-label">Cote combinée</div><div class="coupon-total-value">×${d.coteCombinee}</div></div>`;
   if (!d.isPremium) {
     html += `<div class="premium-lock" style="margin-top:10px">
       <div class="premium-lock-icon">💎</div>
-      <div style="font-weight:700;margin-bottom:4px">8-10 matchs avec Premium</div>
-      <div class="premium-lock-text">Les abonnés Premium ont accès à plus de matchs et à l'historique des coupons</div>
+      <div style="font-weight:800;font-size:14px;margin-bottom:6px">8-10 matchs avec Premium</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Historique des 7 derniers coupons inclus</div>
       <button class="plan-btn" style="margin:0" onclick="showPage('premium')">Passer Premium</button>
     </div>`;
   } else if (showHistoryBtn) {
-    html += `<button class="search-btn" style="margin-top:10px;background:var(--card);color:var(--text);border:1px solid var(--border)" onclick="loadHistorique()">📚 Voir l'historique des coupons</button>`;
+    html += `<button class="search-btn" style="margin-top:10px;background:var(--card);color:var(--text);border:1px solid var(--border)" onclick="loadHistorique()">📚 Historique des coupons</button>`;
   }
-  html += `<div class="disclaimer" style="margin-top:10px">⚠️ Pronostics à titre indicatif. Pariez responsablement.</div>`;
+  html += `<div class="disclaimer">⚠️ Pronostics à titre indicatif. Pariez responsablement.</div>`;
   return html;
 }
 
@@ -627,7 +672,7 @@ async function loadCoupon() {
     const res = await fetch(url);
     const d = await res.json();
     if (!d.ok || !d.matches?.length) {
-      el.innerHTML = `<div class="empty"><span class="big">📭</span>Aucun match aujourd'hui pour générer un coupon.</div>`;
+      el.innerHTML = `<div class="empty"><span class="big">📭</span>Aucun match aujourd'hui.</div>`;
       return;
     }
     el.innerHTML = buildCouponHtml(d, true);
@@ -638,35 +683,109 @@ async function loadCoupon() {
 
 async function loadHistorique() {
   const el = document.getElementById('coupon-content');
-  el.innerHTML = `<div class="loader"><div class="spinner"></div>Chargement de l'historique...</div>`;
+  el.innerHTML = `<div class="loader"><div class="spinner"></div>Chargement...</div>`;
   try {
     const url = BASE + '/api/coupon/historique' + (userId ? '?userId=' + userId : '');
     const res = await fetch(url);
     const d = await res.json();
     if (!d.ok) {
-      el.innerHTML = `<div class="premium-lock"><div class="premium-lock-icon">💎</div><div style="font-weight:700;margin-bottom:4px">Fonctionnalité Premium</div><div class="premium-lock-text">L'historique des coupons est réservé aux abonnés Premium</div><button class="plan-btn" style="margin:0" onclick="showPage('premium')">Passer Premium</button></div>`;
+      el.innerHTML = `<div class="premium-lock"><div class="premium-lock-icon">💎</div><div style="font-weight:800;margin-bottom:6px">Fonctionnalité Premium</div><button class="plan-btn" style="margin:0" onclick="showPage('premium')">Passer Premium</button></div>`;
       return;
     }
     if (!d.history?.length) { el.innerHTML = `<div class="empty"><span class="big">📭</span>Aucun historique disponible.</div>`; return; }
-    let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <div style="font-size:16px;font-weight:800">📚 Historique des coupons</div>
-      <button style="background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer" onclick="loadCoupon()">← Retour</button>
+    let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div class="section-title" style="margin:0">📚 Historique</div>
+      <button style="background:none;border:none;color:var(--accent);font-size:13px;font-weight:700;cursor:pointer" onclick="loadCoupon()">← Retour</button>
     </div>`;
     for (const h of d.history) {
       const combined = h.matches.reduce((a,m)=>a*m.cote,1).toFixed(2);
-      html += `<div class="card" style="margin-bottom:10px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div style="font-weight:700">📅 ${h.date}</div>
-          <div style="color:var(--gold);font-weight:700">x${combined}</div>
-        </div>
-        ${h.matches.slice(0,3).map(m=>`<div style="font-size:12px;color:var(--muted);padding:3px 0">${m.home} vs ${m.away} — <b style="color:var(--text)">${m.prono}</b> x${m.cote}</div>`).join('')}
-        ${h.matches.length > 3 ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">+${h.matches.length-3} autres matchs</div>` : ''}
+      html += `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-weight:800">📅 ${h.date}</div><div style="color:var(--gold);font-weight:900;font-size:16px">×${combined}</div></div>
+        ${h.matches.slice(0,3).map(m=>`<div style="font-size:12px;color:var(--muted2);padding:3px 0">${m.home} vs ${m.away} — <b style="color:var(--text)">${m.prono}</b> ×${m.cote}</div>`).join('')}
+        ${h.matches.length>3?`<div style="font-size:11px;color:var(--muted);margin-top:4px">+${h.matches.length-3} autres matchs</div>`:''}
       </div>`;
     }
     el.innerHTML = html;
   } catch(e) {
     el.innerHTML = `<div class="empty">⚠️ Erreur de chargement</div>`;
   }
+}
+
+// ── Profil ────────────────────────────────────────────────────────
+async function loadProfil() {
+  const el = document.getElementById('profil-content');
+  el.innerHTML = `<div class="loader"><div class="spinner"></div>Chargement...</div>`;
+
+  // Infos Telegram
+  const name = tgUser ? [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') : 'Visiteur';
+  const handle = tgUser?.username ? '@' + tgUser.username : '';
+  const initials = name.slice(0,1).toUpperCase();
+
+  // Statut premium depuis le serveur
+  let isPremium = false, planLabel = 'Gratuit', expiresAt = null, daysLeft = 0;
+  try {
+    if (userId) {
+      const res = await fetch(BASE + '/api/profil?userId=' + userId);
+      const d = await res.json();
+      if (d.ok && d.isPremium) {
+        isPremium = true;
+        planLabel = d.plan;
+        expiresAt = d.expiresAt;
+        const exp = new Date(expiresAt);
+        daysLeft = Math.max(0, Math.ceil((exp - Date.now()) / 86400000));
+      }
+    }
+  } catch(e) {}
+
+  const maxDays = isPremium ? (planLabel==='mensuel'?30:planLabel==='trimestriel'?90:365) : 1;
+  const pct = isPremium ? Math.round((daysLeft/maxDays)*100) : 0;
+
+  let html = `
+  <div class="profile-hero">
+    <div class="profile-avatar">${initials||'?'}</div>
+    <div class="profile-name">${name}</div>
+    ${handle ? `<div class="profile-handle">${handle}</div>` : ''}
+    <div class="${isPremium?'profile-plan-badge':'profile-plan-badge free'}">
+      ${isPremium ? '💎 Premium' : '🆓 Gratuit'}
+    </div>
+  </div>`;
+
+  if (isPremium) {
+    html += `<div class="card">
+      <div class="card-title">💎 Mon abonnement</div>
+      <div class="profile-stat"><span class="profile-stat-label">📦 Plan</span><span class="profile-stat-value gold">${planLabel.charAt(0).toUpperCase()+planLabel.slice(1)}</span></div>
+      <div class="profile-stat"><span class="profile-stat-label">📅 Expire le</span><span class="profile-stat-value">${expiresAt ? new Date(expiresAt).toLocaleDateString('fr-FR') : 'N/A'}</span></div>
+      <div class="profile-stat" style="flex-direction:column;align-items:flex-start;gap:6px">
+        <div style="display:flex;justify-content:space-between;width:100%"><span class="profile-stat-label">⏳ Jours restants</span><span class="profile-stat-value accent">${daysLeft}j</span></div>
+        <div class="progress-bar" style="width:100%"><div class="progress-fill" style="width:${pct}%"></div></div>
+      </div>
+    </div>`;
+  } else {
+    html += `<div class="premium-lock">
+      <div class="premium-lock-icon">💎</div>
+      <div style="font-weight:800;font-size:15px;margin-bottom:6px">Passer à Premium</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">H2H · 10 favoris · Coupon étendu · Alertes</div>
+      <button class="plan-btn" style="margin:0" onclick="showPage('premium')">Voir les plans</button>
+    </div>`;
+  }
+
+  html += `<div class="card">
+    <div class="card-title">📊 Mon activité</div>
+    <div class="profile-stat"><span class="profile-stat-label">❤️ Équipes favorites</span><span class="profile-stat-value accent">${myFavorites.length} / ${isPremium?10:3}</span></div>
+    <div class="profile-stat"><span class="profile-stat-label">🔍 Dernière analyse</span><span class="profile-stat-value">${currentTeam ? currentTeam.name : '—'}</span></div>
+    <div class="profile-stat"><span class="profile-stat-label">🤖 Version bot</span><span class="profile-stat-value" style="color:var(--muted)">BAGA BET v1.0</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">ℹ️ Informations</div>
+    <div class="profile-stat"><span class="profile-stat-label">📱 Ligues disponibles</span><span class="profile-stat-value" style="font-size:11px">PL · Liga · BL · SA · L1 · CL</span></div>
+    <div class="profile-stat"><span class="profile-stat-label">🔄 Données mises à jour</span><span class="profile-stat-value" style="color:var(--muted)">Toutes les 2h</span></div>
+    <div class="profile-stat"><span class="profile-stat-label">💬 Support</span><span class="profile-stat-value" style="color:var(--accent)">@BagaBetSupport</span></div>
+  </div>
+
+  ${isPremium ? '' : ''}
+  <div class="disclaimer">BAGA BET — Pronostics à titre informatif uniquement.<br>Pariez de façon responsable.</div>`;
+
+  el.innerHTML = html;
 }
 
 // ── Premium ───────────────────────────────────────────────────────
@@ -677,23 +796,65 @@ function selectPlan(planKey) {
   section.style.display = 'block';
   section.scrollIntoView({ behavior: 'smooth' });
   document.getElementById('payment-instructions').innerHTML = `
-    <p style="margin-bottom:10px;font-size:14px">Envoyez <b style="color:var(--accent2)">${plan.amount.toLocaleString('fr-FR')} FCFA</b> via Wave ou Orange Money :</p>
-    <div style="background:var(--card2);border-radius:10px;padding:14px;margin-bottom:12px;border:1px solid var(--border)">
-      <div style="margin-bottom:6px"><span style="color:var(--muted);font-size:12px">Numéro</span><br><b style="font-size:18px;letter-spacing:1px">${PAYMENT_PHONE}</b></div>
-      <div><span style="color:var(--muted);font-size:12px">Nom</span><br><b>${PAYMENT_NAME}</b></div>
+    <p style="margin-bottom:12px;font-size:14px">Envoyez <b style="color:var(--accent)">${plan.amount.toLocaleString('fr-FR')} FCFA</b> via Wave ou Orange Money :</p>
+    <div style="background:var(--card2);border-radius:12px;padding:14px;margin-bottom:12px;border:1px solid var(--border)">
+      <div style="margin-bottom:8px"><span style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px">Numéro</span><br><b style="font-size:22px;letter-spacing:2px">${PAYMENT_PHONE}</b></div>
+      <div><span style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px">Nom</span><br><b>${PAYMENT_NAME}</b></div>
     </div>
-    <div style="background:#00c85315;border:1px solid #00c85344;border-radius:10px;padding:12px;margin-bottom:12px">
-      <div style="font-size:12px;color:var(--muted)">Référence à mettre dans le motif</div>
-      <div style="font-size:16px;font-weight:800;letter-spacing:2px;color:var(--accent2);margin-top:4px">${ref}</div>
+    <div style="background:var(--accent-dim);border:1px solid var(--accent-border);border-radius:12px;padding:12px;margin-bottom:12px">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Référence (motif du paiement)</div>
+      <div style="font-size:18px;font-weight:900;letter-spacing:3px;color:var(--accent)">${ref}</div>
     </div>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">Après paiement, tapez <b>/confirmer ${ref}</b> dans le bot.</p>
+    <p style="font-size:13px;color:var(--muted2);margin-bottom:12px">Après paiement, tapez <b style="color:var(--text)">/confirmer ${ref}</b> dans le bot Telegram.</p>
     <button class="search-btn" onclick="copyRef('${ref}')">📋 Copier la référence</button>`;
 }
 
 function copyRef(ref) {
   navigator.clipboard?.writeText(ref).then(() => {
-    if (tg) tg.showAlert('Référence copiée : ' + ref);
-  }).catch(() => { if (tg) tg.showAlert('Référence : ' + ref); });
+    if (tg) tg.showAlert('✅ Référence copiée !\n' + ref);
+    else alert('Référence : ' + ref);
+  }).catch(() => { if (tg) tg.showAlert('Référence : ' + ref); else alert(ref); });
+}
+
+// ── Promo 1xbet ───────────────────────────────────────────────────
+async function activatePromo() {
+  const code = document.getElementById('promo-code-input').value.trim();
+  const resultEl = document.getElementById('promo-result');
+  const inputSec = document.getElementById('promo-input-section');
+  if (!code) return;
+  if (!userId) {
+    resultEl.style.display = 'block';
+    resultEl.innerHTML = `<div style="background:#ef535015;border:1px solid #ef535040;border-radius:10px;padding:12px;font-size:13px;color:var(--lose)">⚠️ Ouvrez cette page depuis le bot Telegram pour activer le code.</div>`;
+    return;
+  }
+  const btn = document.querySelector('#promo-input-section button');
+  btn.textContent = '⏳';
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${BASE}/api/promo?userId=${userId}&code=${encodeURIComponent(code)}`);
+    const d = await res.json();
+    if (d.ok) {
+      inputSec.style.display = 'none';
+      resultEl.style.display = 'block';
+      const exp = new Date(d.expiresAt).toLocaleDateString('fr-FR');
+      resultEl.innerHTML = `<div style="background:#00e67615;border:1px solid #00e67640;border-radius:10px;padding:14px;text-align:center">
+        <div style="font-size:28px;margin-bottom:8px">🎉</div>
+        <div style="font-weight:900;font-size:16px;color:var(--win);margin-bottom:4px">${d.extended ? 'Premium prolongé !' : 'Premium activé !'}</div>
+        <div style="font-size:13px;color:var(--muted2)">30 jours · Expire le <b style="color:var(--text)">${exp}</b></div>
+      </div>`;
+    } else {
+      resultEl.style.display = 'block';
+      const msg = d.error === 'Code déjà utilisé' ? '⚠️ Vous avez déjà utilisé ce code.' : d.error === 'Code promo invalide' ? '❌ Code invalide. Vérifiez et réessayez.' : '❌ ' + d.error;
+      resultEl.innerHTML = `<div style="background:#ef535015;border:1px solid #ef535040;border-radius:10px;padding:12px;font-size:13px;color:var(--lose)">${msg}</div>`;
+      btn.textContent = '✓';
+      btn.disabled = false;
+    }
+  } catch(e) {
+    resultEl.style.display = 'block';
+    resultEl.innerHTML = `<div style="background:#ef535015;border:1px solid #ef535040;border-radius:10px;padding:12px;font-size:13px;color:var(--lose)">⚠️ Erreur de connexion</div>`;
+    btn.textContent = '✓';
+    btn.disabled = false;
+  }
 }
 
 // Démarrage
