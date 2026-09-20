@@ -115,6 +115,17 @@
   .fav-card-btn{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:4px}
   .fav-analyse-btn{background:var(--accent);color:#000;border:none;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer}
 
+  /* Premium lock overlay */
+  .premium-lock{background:linear-gradient(135deg,#1a1600,#1a1000);border:1px solid #ffd70044;border-radius:12px;padding:16px;text-align:center;margin:10px 0}
+  .premium-lock-icon{font-size:28px;margin-bottom:6px}
+  .premium-lock-text{font-size:13px;color:var(--muted);margin-bottom:10px}
+
+  /* Record bar */
+  .record-bar{display:flex;gap:3px;height:8px;border-radius:4px;overflow:hidden;margin:6px 0}
+  .record-bar .seg-w{background:var(--win)}
+  .record-bar .seg-d{background:var(--draw)}
+  .record-bar .seg-l{background:var(--lose)}
+
   /* Coupon */
   .coupon-header{background:linear-gradient(135deg,#1a1200,#1a1600);border:1px solid #ffd70044;border-radius:14px;padding:16px;margin-bottom:12px;text-align:center}
   .coupon-title{font-size:18px;font-weight:800;color:var(--gold)}
@@ -378,11 +389,13 @@ async function doAnalyse() {
   const el = document.getElementById('analyse-content');
   el.innerHTML = `<div class="loader"><div class="spinner"></div>Analyse de "${q}"...</div>`;
   try {
-    const res = await fetch(BASE + '/api/analyse?team=' + encodeURIComponent(q));
+    const url = BASE + '/api/analyse?team=' + encodeURIComponent(q) + (userId ? '&userId=' + userId : '');
+    const res = await fetch(url);
     const d = await res.json();
     if (!d.ok) { el.innerHTML = `<div class="empty">❌ ${d.error}</div>`; return; }
     currentTeam = d.team;
     const isFav = myFavorites.some(f => f.name === d.team.name);
+    const isPremium = d.isPremium;
 
     const formHtml = d.form.map(r => `<div class="form-dot ${r}">${r==='W'?'V':r==='D'?'N':'D'}</div>`).join('');
     const maxGoals = Math.max(parseFloat(d.goalsFor)||0, parseFloat(d.goalsAgainst)||0) || 1;
@@ -398,6 +411,71 @@ async function doAnalyse() {
         <div style="display:flex;align-items:center;gap:8px"><span style="font-weight:700">${gf}-${ga}</span><span class="result-tag ${r}">${lbl}</span></div>
       </div>`;
     }).join('');
+
+    // Sections premium
+    let premiumHtml = '';
+    if (isPremium) {
+      // Prochain match
+      if (d.nextMatch) {
+        const nm = d.nextMatch;
+        premiumHtml += `<div class="card" style="border-color:#ffd70044">
+          <div class="card-title" style="color:var(--gold)">🔜 Prochain match</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <img src="${nm.opponentLogo||''}" onerror="this.style.display='none'" width="32" height="32">
+            <div>
+              <div style="font-weight:700;font-size:14px">${nm.isHome?'vs':'@'} ${nm.opponent}</div>
+              <div style="font-size:12px;color:var(--muted)">${nm.date} à ${nm.time}</div>
+              <div style="font-size:11px;color:var(--muted)">${nm.competition||''}</div>
+            </div>
+          </div>
+        </div>`;
+      }
+      // Domicile vs extérieur
+      if (d.homeRecord && d.awayRecord) {
+        const hr = d.homeRecord, ar = d.awayRecord;
+        const hTotal = (hr.w+hr.d+hr.l)||1, aTotal = (ar.w+ar.d+ar.l)||1;
+        premiumHtml += `<div class="card" style="border-color:#ffd70044">
+          <div class="card-title" style="color:var(--gold)">🏠 Dom. vs Extérieur (10 derniers)</div>
+          <div style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span>🏠 Domicile</span><span style="color:var(--muted)">${hr.w}V ${hr.d}N ${hr.l}D</span></div>
+            <div class="record-bar">
+              <div class="seg-w" style="flex:${hr.w}"></div>
+              <div class="seg-d" style="flex:${hr.d}"></div>
+              <div class="seg-l" style="flex:${hr.l}"></div>
+            </div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span>✈️ Extérieur</span><span style="color:var(--muted)">${ar.w}V ${ar.d}N ${ar.l}D</span></div>
+            <div class="record-bar">
+              <div class="seg-w" style="flex:${ar.w}"></div>
+              <div class="seg-d" style="flex:${ar.d}"></div>
+              <div class="seg-l" style="flex:${ar.l}"></div>
+            </div>
+          </div>
+        </div>`;
+      }
+      // H2H
+      if (d.h2h?.length) {
+        const h2hRows = d.h2h.map(m => {
+          const r = m.goalsFor>m.goalsAgainst?'W':m.goalsFor===m.goalsAgainst?'D':'L';
+          return `<div class="last-match">
+            <div class="last-match-opp">${m.isHome?'vs':'@'} ${m.opponent}</div>
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-weight:700">${m.goalsFor}-${m.goalsAgainst}</span><span class="result-tag ${r}">${r==='W'?'V':r==='D'?'N':'D'}</span></div>
+          </div>`;
+        }).join('');
+        premiumHtml += `<div class="card" style="border-color:#ffd70044">
+          <div class="card-title" style="color:var(--gold)">⚔️ H2H (confrontations directes)</div>
+          ${h2hRows}
+        </div>`;
+      }
+    } else {
+      premiumHtml = `<div class="premium-lock">
+        <div class="premium-lock-icon">💎</div>
+        <div style="font-weight:700;margin-bottom:4px">Fonctionnalités Premium</div>
+        <div class="premium-lock-text">Prochain match, domicile/extérieur, H2H disponibles avec Premium</div>
+        <button class="plan-btn" style="margin:0" onclick="showPage('premium')">Passer Premium</button>
+      </div>`;
+    }
 
     el.innerHTML = `
       <div class="team-header">
@@ -422,6 +500,7 @@ async function doAnalyse() {
         <div class="goals-row"><span class="goals-label">Encaissés</span><div class="goals-bar"><div class="goals-fill against" style="width:${pctAga}%"></div></div><span class="goals-val" style="color:var(--lose)">${d.goalsAgainst}/m</span></div>
       </div>
       ${lastHtml ? `<div class="card"><div class="card-title">📋 Derniers matchs</div>${lastHtml}</div>` : ''}
+      ${premiumHtml}
       <button class="fav-btn ${isFav?'is-fav':''}" onclick="toggleFavorite()" id="fav-btn">
         ${isFav ? '💔 Retirer des favoris' : '❤️ Ajouter aux favoris'}
       </button>
@@ -491,47 +570,90 @@ function removeFav(teamName) {
 }
 
 // ── Coupon ────────────────────────────────────────────────────────
+function buildCouponHtml(d, showHistoryBtn) {
+  const starsHtml = n => '⭐'.repeat(n);
+  let html = `<div id="coupon-loaded"></div>
+  <div class="coupon-header">
+    <div class="coupon-title">🎯 Coupon ${d.isPremium ? '💎 Premium' : 'du jour'}</div>
+    <div class="coupon-date">📅 ${d.date}</div>
+    ${d.isPremium ? '<div style="font-size:11px;color:var(--gold);margin-top:4px">✨ ' + d.matches.length + ' matchs sélectionnés</div>' : ''}
+  </div>`;
+  for (const m of d.matches) {
+    const cls = m.prono==='1'?'p1':m.prono==='N'?'pN':'p2';
+    html += `<div class="coupon-match">
+      <div class="coupon-match-teams">
+        <div class="coupon-team"><img src="${m.homeLogo||''}" onerror="this.style.display='none'" width="22" height="22">${m.home}</div>
+        <span class="coupon-vs">vs</span>
+        <div class="coupon-team"><img src="${m.awayLogo||''}" onerror="this.style.display='none'" width="22" height="22">${m.away}</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">🏆 ${m.league} | 🕐 ${m.time}</div>
+      <div class="coupon-prono">
+        <div><span class="prono-badge ${cls}">${m.prono}</span><span style="font-size:12px;color:var(--muted);margin-left:8px">${m.label}</span></div>
+        <div style="text-align:right"><div class="coupon-cote">x${m.cote}</div><div class="coupon-stars">${starsHtml(m.stars)}</div></div>
+      </div>
+    </div>`;
+  }
+  html += `<div class="coupon-total">
+    <div class="coupon-total-label">Cote combinée</div>
+    <div class="coupon-total-value">x${d.coteCombinee}</div>
+  </div>`;
+  if (!d.isPremium) {
+    html += `<div class="premium-lock" style="margin-top:10px">
+      <div class="premium-lock-icon">💎</div>
+      <div style="font-weight:700;margin-bottom:4px">8-10 matchs avec Premium</div>
+      <div class="premium-lock-text">Les abonnés Premium ont accès à plus de matchs et à l'historique des coupons</div>
+      <button class="plan-btn" style="margin:0" onclick="showPage('premium')">Passer Premium</button>
+    </div>`;
+  } else if (showHistoryBtn) {
+    html += `<button class="search-btn" style="margin-top:10px;background:var(--card);color:var(--text);border:1px solid var(--border)" onclick="loadHistorique()">📚 Voir l'historique des coupons</button>`;
+  }
+  html += `<div class="disclaimer" style="margin-top:10px">⚠️ Pronostics à titre indicatif. Pariez responsablement.</div>`;
+  return html;
+}
+
 async function loadCoupon() {
   const el = document.getElementById('coupon-content');
   try {
-    const res = await fetch(BASE + '/api/coupon');
+    const url = BASE + '/api/coupon' + (userId ? '?userId=' + userId : '');
+    const res = await fetch(url);
     const d = await res.json();
     if (!d.ok || !d.matches?.length) {
       el.innerHTML = `<div class="empty"><span class="big">📭</span>Aucun match aujourd'hui pour générer un coupon.</div>`;
       return;
     }
-    const starsHtml = n => '⭐'.repeat(n);
-    let html = `<div id="coupon-loaded"></div>
-    <div class="coupon-header">
-      <div class="coupon-title">🎯 Coupon du jour</div>
-      <div class="coupon-date">📅 ${d.date}</div>
+    el.innerHTML = buildCouponHtml(d, true);
+  } catch(e) {
+    el.innerHTML = `<div class="empty">⚠️ Erreur de chargement</div>`;
+  }
+}
+
+async function loadHistorique() {
+  const el = document.getElementById('coupon-content');
+  el.innerHTML = `<div class="loader"><div class="spinner"></div>Chargement de l'historique...</div>`;
+  try {
+    const url = BASE + '/api/coupon/historique' + (userId ? '?userId=' + userId : '');
+    const res = await fetch(url);
+    const d = await res.json();
+    if (!d.ok) {
+      el.innerHTML = `<div class="premium-lock"><div class="premium-lock-icon">💎</div><div style="font-weight:700;margin-bottom:4px">Fonctionnalité Premium</div><div class="premium-lock-text">L'historique des coupons est réservé aux abonnés Premium</div><button class="plan-btn" style="margin:0" onclick="showPage('premium')">Passer Premium</button></div>`;
+      return;
+    }
+    if (!d.history?.length) { el.innerHTML = `<div class="empty"><span class="big">📭</span>Aucun historique disponible.</div>`; return; }
+    let html = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div style="font-size:16px;font-weight:800">📚 Historique des coupons</div>
+      <button style="background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer" onclick="loadCoupon()">← Retour</button>
     </div>`;
-    for (const m of d.matches) {
-      const cls = m.prono==='1'?'p1':m.prono==='N'?'pN':'p2';
-      html += `<div class="coupon-match">
-        <div class="coupon-match-teams">
-          <div class="coupon-team"><img src="${m.homeLogo||''}" onerror="this.style.display='none'" width="22" height="22">${m.home}</div>
-          <span class="coupon-vs">vs</span>
-          <div class="coupon-team"><img src="${m.awayLogo||''}" onerror="this.style.display='none'" width="22" height="22">${m.away}</div>
+    for (const h of d.history) {
+      const combined = h.matches.reduce((a,m)=>a*m.cote,1).toFixed(2);
+      html += `<div class="card" style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-weight:700">📅 ${h.date}</div>
+          <div style="color:var(--gold);font-weight:700">x${combined}</div>
         </div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">🏆 ${m.league} | 🕐 ${m.time}</div>
-        <div class="coupon-prono">
-          <div>
-            <span class="prono-badge ${cls}">${m.prono}</span>
-            <span style="font-size:12px;color:var(--muted);margin-left:8px">${m.label}</span>
-          </div>
-          <div style="text-align:right">
-            <div class="coupon-cote">x${m.cote}</div>
-            <div class="coupon-stars">${starsHtml(m.stars)}</div>
-          </div>
-        </div>
+        ${h.matches.slice(0,3).map(m=>`<div style="font-size:12px;color:var(--muted);padding:3px 0">${m.home} vs ${m.away} — <b style="color:var(--text)">${m.prono}</b> x${m.cote}</div>`).join('')}
+        ${h.matches.length > 3 ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">+${h.matches.length-3} autres matchs</div>` : ''}
       </div>`;
     }
-    html += `<div class="coupon-total">
-      <div class="coupon-total-label">Cote combinée</div>
-      <div class="coupon-total-value">x${d.coteCombinee}</div>
-    </div>
-    <div class="disclaimer" style="margin-top:10px">⚠️ Pronostics à titre indicatif. Pariez responsablement.</div>`;
     el.innerHTML = html;
   } catch(e) {
     el.innerHTML = `<div class="empty">⚠️ Erreur de chargement</div>`;

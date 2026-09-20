@@ -75,6 +75,12 @@ const favoriteTeams = {};
 const MAX_FAVORITES_FREE = 3;
 const MAX_FAVORITES_PREMIUM = 10;
 
+// Historique des coupons { date: {matches, coteCombinee} }
+const couponHistory = {};
+
+// Cache coupon du jour (évite de régénérer à chaque appel)
+let todayCouponCache = { date: null, data: null };
+
 if (!BOT_TOKEN) { console.error('BOT_TOKEN manquant'); process.exit(1); }
 
 // ── API football-data.org v4 ──────────────────────────────────────
@@ -268,6 +274,98 @@ async function getTeamAnalysis(teamName) {
   const avgAga = played ? (ga / played).toFixed(1) : 'N/A';
 
   return { team, competition, lastMatches, form, wins, draws, losses, avgFor, avgAga, played };
+}
+
+// Analyse premium : H2H + forme domicile/extérieur
+async function getTeamAnalysisPremium(teamName) {
+  const base = await getTeamAnalysis(teamName);
+  if (!base) return null;
+  const { team } = base;
+
+  // Prochain match
+  const nextData = await apiGet(`/teams/${team.id}/matches`, { limit: 1, status: 'SCHEDULED' });
+  const nextMatch = nextData?.matches?.[0] || null;
+
+  // Forme domicile vs extérieur (10 derniers)
+  const extData = await apiGet(`/teams/${team.id}/matches`, { limit: 10, status: 'FINISHED' });
+  const allMatches = extData?.matches || [];
+  let homeW=0,homeD=0,homeL=0,awayW=0,awayD=0,awayL=0;
+  for (const m of allMatches) {
+    const isHome = m.homeTeam?.id === team.id;
+    const gs = isHome ? m.score?.fullTime?.home : m.score?.fullTime?.away;
+    const gc = isHome ? m.score?.fullTime?.away : m.score?.fullTime?.home;
+    if (isHome) { if(gs>gc)homeW++;else if(gs===gc)homeD++;else homeL++; }
+    else        { if(gs>gc)awayW++;else if(gs===gc)awayD++;else awayL++; }
+  }
+
+  // H2H — si prochain match connu, chercher les confrontations passées
+  let h2h = [];
+  if (nextMatch) {
+    const oppId = nextMatch.homeTeam?.id === team.id ? nextMatch.awayTeam?.id : nextMatch.homeTeam?.id;
+    const h2hData = await apiGet(`/teams/${team.id}/matches`, { limit: 5, status: 'FINISHED' });
+    h2h = (h2hData?.matches || []).filter(m =>
+      (m.homeTeam?.id === team.id && m.awayTeam?.id === oppId) ||
+      (m.awayTeam?.id === team.id && m.homeTeam?.id === oppId)
+    ).slice(0, 5).map(m => {
+      const isHome = m.homeTeam?.id === team.id;
+      const gs = isHome ? m.score?.fullTime?.home : m.score?.fullTime?.away;
+      const gc = isHome ? m.score?.fullTime?.away : m.score?.fullTime?.home;
+      return { opponent: isHome ? m.awayTeam?.name : m.homeTeam?.name, goalsFor: gs, goalsAgainst: gc, isHome };
+    });
+  }
+
+  return {
+    ...base,
+    homeRecord: { w: homeW, d: homeD, l: homeL },
+    awayRecord: { w: awayW, d: awayD, l: awayL },
+    nextMatch: nextMatch ? {
+      opponent: nextMatch.homeTeam?.id === team.id ? nextMatch.awayTeam?.name : nextMatch.homeTeam?.name,
+      opponentLogo: nextMatch.homeTeam?.id === team.id ? nextMatch.awayTeam?.crest : nextMatch.homeTeam?.crest,
+      isHome: nextMatch.homeTeam?.id === team.id,
+      date: nextMatch.utcDate ? new Date(nextMatch.utcDate).toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', timeZone:'Africa/Abidjan' }) : '',
+      time: nextMatch.utcDate ? new Date(nextMatch.utcDate).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit', timeZone:'Africa/Abidjan' }) : '',
+      competition: nextMatch.competition?.name,
+    } : null,
+    h2h,
+  };
+}
+
+// Génère le coupon du jour (avec cache) — premium = 8 matchs, gratuit = 4
+function generateCoupon(rawMatches, isPremium) {
+  const today = new Date().toLocaleDateString('fr-FR');
+  if (todayCouponCache.date === today && todayCouponCache.data) {
+    const cached = todayCouponCache.data;
+    if (!isPremium) return { ...cached, matches: cached.matches.slice(0, 4), coteCombinee: cached.matches.slice(0,4).reduce((a,m) => a*m.cote, 1).toFixed(2) };
+    return cached;
+  }
+  const PRIORITY_COMPS = ['Premier League','Primera Division','Bundesliga','Serie A','Ligue 1','UEFA Champions League'];
+  const sorted = [
+    ...rawMatches.filter(m => PRIORITY_COMPS.includes(m.competition?.name)),
+    ...rawMatches.filter(m => !PRIORITY_COMPS.includes(m.competition?.name)),
+  ].slice(0, 10);
+  const PRONOSTICS = ['1','N','2'];
+  const LABELS = { '1':'Domicile gagne','N':'Match nul','2':'Extérieur gagne' };
+  const COTES = { '1':[1.5,1.6,1.7,1.8,2.0,2.2],'N':[3.0,3.2,3.4,3.5],'2':[1.8,2.0,2.2,2.5,3.0] };
+  const STARS = [3,3,2,2,2,1];
+  let coteCombinee = 1;
+  const couponMatches = sorted.map(m => {
+    const prono = PRONOSTICS[Math.floor(Math.random()*3)];
+    const cote = COTES[prono][Math.floor(Math.random()*COTES[prono].length)];
+    const stars = STARS[Math.floor(Math.random()*STARS.length)];
+    coteCombinee *= cote;
+    return {
+      home: m.homeTeam?.name, homeLogo: m.homeTeam?.crest,
+      away: m.awayTeam?.name, awayLogo: m.awayTeam?.crest,
+      league: m.competition?.name,
+      time: m.utcDate ? new Date(m.utcDate).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',timeZone:'Africa/Abidjan'}) : '--:--',
+      prono, label: LABELS[prono], cote, stars,
+    };
+  });
+  const data = { matches: couponMatches, coteCombinee: coteCombinee.toFixed(2), date: today };
+  todayCouponCache = { date: today, data };
+  couponHistory[today] = data;
+  if (!isPremium) return { ...data, matches: couponMatches.slice(0,4), coteCombinee: couponMatches.slice(0,4).reduce((a,m)=>a*m.cote,1).toFixed(2) };
+  return data;
 }
 
 // /analyse
@@ -822,16 +920,25 @@ async function handleApi(req, res, urlObj) {
           isHome,
         };
       });
+      // Si premium, enrichir avec H2H + domicile/extérieur
+      const userId = urlObj.searchParams.get('userId');
+      const isPremium = userId ? !!premiumUsers[userId] : false;
+      let extra = {};
+      if (isPremium) {
+        const pData = await getTeamAnalysisPremium(teamName);
+        if (pData) extra = { homeRecord: pData.homeRecord, awayRecord: pData.awayRecord, nextMatch: pData.nextMatch, h2h: pData.h2h };
+      }
       res.end(JSON.stringify({
         ok: true,
+        isPremium,
         team: { name: team.name, logo: team.crest },
         league: { name: competition?.name, logo: competition?.emblem },
         season: new Date().getFullYear(),
         form,
         played, wins, draws, loses: losses,
         goalsFor: avgFor, goalsAgainst: avgAga,
-        goalsForTotal: null, goalsAgainstTotal: null, cleanSheets: null,
         lastMatches: lastMatchesMapped,
+        ...extra,
       }));
     } else if (urlObj.pathname === '/api/favoris') {
       if (req.method === 'POST') {
@@ -862,33 +969,21 @@ async function handleApi(req, res, urlObj) {
         res.end(JSON.stringify({ ok: true, favorites: favoriteTeams[userId] || [] }));
       }
     } else if (urlObj.pathname === '/api/coupon') {
+      const userId = urlObj.searchParams.get('userId');
+      const isPremium = userId ? !!premiumUsers[userId] : false;
       const rawMatches = await getTodayMatches();
-      if (!rawMatches?.length) return res.end(JSON.stringify({ ok: true, matches: [] }));
-      const PRIORITY_COMPS = ['Premier League','Primera Division','Bundesliga','Serie A','Ligue 1','UEFA Champions League'];
-      const sorted = [
-        ...rawMatches.filter(m => PRIORITY_COMPS.includes(m.competition?.name)),
-        ...rawMatches.filter(m => !PRIORITY_COMPS.includes(m.competition?.name)),
-      ].slice(0, 4);
-      const PRONOSTICS = ['1','N','2'];
-      const LABELS = { '1':'Domicile gagne','N':'Match nul','2':'Extérieur gagne' };
-      const COTES = { '1':[1.5,1.6,1.7,1.8,2.0,2.2],'N':[3.0,3.2,3.4,3.5],'2':[1.8,2.0,2.2,2.5,3.0] };
-      const STARS = [3, 3, 2, 2, 2, 1];
-      let coteCombinee = 1;
-      const couponMatches = sorted.map(m => {
-        const prono = PRONOSTICS[Math.floor(Math.random() * 3)];
-        const cotesArr = COTES[prono];
-        const cote = cotesArr[Math.floor(Math.random() * cotesArr.length)];
-        const stars = STARS[Math.floor(Math.random() * STARS.length)];
-        coteCombinee *= cote;
-        return {
-          home: m.homeTeam?.name, homeLogo: m.homeTeam?.crest,
-          away: m.awayTeam?.name, awayLogo: m.awayTeam?.crest,
-          league: m.competition?.name, leagueLogo: m.competition?.emblem,
-          time: m.utcDate ? new Date(m.utcDate).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit', timeZone:'Africa/Abidjan' }) : '--:--',
-          prono, label: LABELS[prono], cote, stars,
-        };
-      });
-      res.end(JSON.stringify({ ok: true, matches: couponMatches, coteCombinee: coteCombinee.toFixed(2), date: new Date().toLocaleDateString('fr-FR') }));
+      if (!rawMatches?.length) return res.end(JSON.stringify({ ok: true, matches: [], isPremium }));
+      const coupon = generateCoupon(rawMatches, isPremium);
+      res.end(JSON.stringify({ ok: true, isPremium, ...coupon }));
+    } else if (urlObj.pathname === '/api/coupon/historique') {
+      const userId = urlObj.searchParams.get('userId');
+      const isPremium = userId ? !!premiumUsers[userId] : false;
+      if (!isPremium) return res.end(JSON.stringify({ ok: false, needPremium: true, error: 'Fonctionnalité Premium' }));
+      const history = Object.entries(couponHistory)
+        .sort((a, b) => b[0].localeCompare(a[0]))
+        .slice(0, 7)
+        .map(([date, data]) => ({ date, ...data }));
+      res.end(JSON.stringify({ ok: true, history }));
     } else {
       res.writeHead(404);
       res.end(JSON.stringify({ ok: false, error: 'Route inconnue' }));
@@ -925,9 +1020,57 @@ server.listen(PORT, () => {
   }
 });
 
+// ── Alertes matchs favoris ────────────────────────────────────────
+async function sendFavoriteAlerts() {
+  const usersWithFavs = Object.entries(favoriteTeams).filter(([, favs]) => favs.length > 0);
+  if (!usersWithFavs.length) return;
+
+  const todayMatches = await getTodayMatches();
+  if (!todayMatches?.length) return;
+
+  for (const [userId, favs] of usersWithFavs) {
+    const alerts = [];
+    for (const fav of favs) {
+      const match = todayMatches.find(m =>
+        m.homeTeam?.name?.toLowerCase().includes(fav.name.toLowerCase()) ||
+        m.awayTeam?.name?.toLowerCase().includes(fav.name.toLowerCase())
+      );
+      if (match) {
+        const time = match.utcDate ? new Date(match.utcDate).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit', timeZone:'Africa/Abidjan' }) : '--:--';
+        const isHome = match.homeTeam?.name?.toLowerCase().includes(fav.name.toLowerCase());
+        const opp = isHome ? match.awayTeam?.name : match.homeTeam?.name;
+        alerts.push(`⚽ *${fav.name}* ${isHome ? 'vs' : '@'} *${opp}* à *${time}*\n🏆 ${match.competition?.name}`);
+      }
+    }
+    if (alerts.length) {
+      const text = `🔔 *Alerte matchs du jour !*\n\n${alerts.join('\n\n')}\n\n_Bonne chance ! 🍀_`;
+      try {
+        await bot.telegram.sendMessage(parseInt(userId), text, { parse_mode: 'Markdown' });
+      } catch (e) {
+        console.error(`Alerte userId ${userId}: ${e.message}`);
+      }
+    }
+  }
+}
+
+// Planifier les alertes à 9h00 (Africa/Abidjan = UTC+0)
+function scheduleDailyAlerts() {
+  const now = new Date();
+  const next9h = new Date(now);
+  next9h.setUTCHours(9, 0, 0, 0);
+  if (next9h <= now) next9h.setUTCDate(next9h.getUTCDate() + 1);
+  const msUntil9h = next9h - now;
+  setTimeout(() => {
+    sendFavoriteAlerts();
+    setInterval(sendFavoriteAlerts, 24 * 60 * 60 * 1000);
+  }, msUntil9h);
+  console.log(`Alertes planifiées dans ${Math.round(msUntil9h/60000)} min`);
+}
+
 // Démarrage
 bot.launch().then(() => {
   console.log(`✅ BAGA BET BOT démarré - Mode: ${DEMO_MODE ? 'DÉMO' : 'API RÉELLE'}`);
+  scheduleDailyAlerts();
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
