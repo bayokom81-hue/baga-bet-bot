@@ -748,11 +748,12 @@ async function loadProfil() {
   const initials = name.slice(0,1).toUpperCase();
 
   // Statut premium depuis le serveur
-  let isPremium = false, planLabel = 'Gratuit', expiresAt = null, daysLeft = 0;
+  let isPremium = false, planLabel = 'Gratuit', expiresAt = null, daysLeft = 0, isAdmin = false;
   try {
     if (userId) {
       const res = await fetch(BASE + '/api/profil?userId=' + userId);
       const d = await res.json();
+      isAdmin = !!d.isAdmin;
       if (d.ok && d.isPremium) {
         isPremium = true;
         planLabel = d.plan;
@@ -809,10 +810,44 @@ async function loadProfil() {
     <div class="profile-stat"><span class="profile-stat-label">💬 Support</span><span class="profile-stat-value" style="color:var(--accent)">@BagaBetSupport</span></div>
   </div>
 
-  ${isPremium ? '' : ''}
+  ${isAdmin ? `
+  <div class="card" style="border:1px solid var(--accent)">
+    <div class="card-title">🛡️ Panneau Admin</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Activer Premium pour un utilisateur</div>
+    <input id="admin-target-id" placeholder="User ID Telegram" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px;margin-bottom:8px;box-sizing:border-box" />
+    <select id="admin-plan-select" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px;margin-bottom:10px;box-sizing:border-box">
+      <option value="mensuel">Mensuel (30j)</option>
+      <option value="trimestriel">Trimestriel (90j)</option>
+      <option value="annuel">Annuel (365j)</option>
+    </select>
+    <button class="plan-btn" style="margin:0;width:100%" onclick="adminActiver()">✅ Activer Premium</button>
+    <div id="admin-msg" style="margin-top:8px;font-size:12px;text-align:center"></div>
+  </div>` : ''}
   <div class="disclaimer">BetAnalyse — Pronostics à titre informatif uniquement.<br>Pariez de façon responsable.</div>`;
 
   el.innerHTML = html;
+}
+
+// ── Admin ─────────────────────────────────────────────────────────
+async function adminActiver() {
+  const targetId = document.getElementById('admin-target-id').value.trim() || userId;
+  const plan = document.getElementById('admin-plan-select').value;
+  const msg = document.getElementById('admin-msg');
+  if (!targetId) { msg.style.color='var(--danger)'; msg.textContent='Entrez un User ID'; return; }
+  try {
+    const r = await fetch(`${BASE}/api/admin/activer?requesterId=${userId}&userId=${targetId}&plan=${plan}`);
+    const d = await r.json();
+    if (d.ok) {
+      msg.style.color='var(--success)';
+      msg.textContent = `✅ Premium activé jusqu'au ${new Date(d.expiresAt).toLocaleDateString('fr-FR')}`;
+    } else {
+      msg.style.color='var(--danger)';
+      msg.textContent = '❌ ' + (d.error || 'Erreur');
+    }
+  } catch(e) {
+    msg.style.color='var(--danger)';
+    msg.textContent = '❌ Erreur réseau';
+  }
 }
 
 // ── Premium ───────────────────────────────────────────────────────

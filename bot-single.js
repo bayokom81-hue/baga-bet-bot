@@ -2,6 +2,8 @@ require('dotenv').config();
 const { Telegraf, Markup } = require('telegraf');
 const axios = require('axios');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
@@ -64,14 +66,27 @@ const PLANS = {
   annuel:      { label: 'Annuel',      amount: 20000, days: 365 },
 };
 
-// Utilisateurs premium (en mémoire — persistance basique)
-const premiumUsers = {};
-const PROMO_DAYS = 30;
-// Codes générés par l'admin : { code: { days, createdAt, usedBy: null } }
-const promoCodes = {};
+// ── Persistance JSON ──────────────────────────────────────────────
+const DATA_FILE = path.join(__dirname, 'data.json');
+function loadData() {
+  try {
+    if (fs.existsSync(DATA_FILE)) {
+      const d = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+      return { premiumUsers: d.premiumUsers || {}, promoCodes: d.promoCodes || {}, favoriteTeams: d.favoriteTeams || {} };
+    }
+  } catch(e) { console.error('loadData:', e.message); }
+  return { premiumUsers: {}, promoCodes: {}, favoriteTeams: {} };
+}
+function saveData() {
+  try { fs.writeFileSync(DATA_FILE, JSON.stringify({ premiumUsers, promoCodes, favoriteTeams }, null, 2)); }
+  catch(e) { console.error('saveData:', e.message); }
+}
 
-// Équipes favorites par utilisateur { userId: [{name, logo, competition}] }
-const favoriteTeams = {};
+const _data = loadData();
+const premiumUsers = _data.premiumUsers;
+const PROMO_DAYS = 30;
+const promoCodes = _data.promoCodes;
+const favoriteTeams = _data.favoriteTeams;
 const MAX_FAVORITES_FREE = 3;
 const MAX_FAVORITES_PREMIUM = 10;
 
@@ -538,6 +553,7 @@ bot.action(/^fav_(add|remove)_(\d+)_(.+)_(.*)_(.*)$/, async (ctx) => {
     favoriteTeams[userId] = favoriteTeams[userId].filter(f => f.name !== teamName);
     ctx.answerCbQuery(`💔 ${teamName} retiré des favoris.`, { show_alert: true });
   }
+  saveData();
 });
 
 // /favoris
@@ -683,6 +699,7 @@ bot.command('gencode', async (ctx) => {
   const days = parseInt(ctx.message?.text?.split(' ')[1]) || PROMO_DAYS;
   const code = 'BB' + Math.random().toString(36).substring(2, 8).toUpperCase();
   promoCodes[code] = { days, createdAt: new Date().toISOString(), usedBy: null };
+  saveData();
   ctx.replyWithMarkdown(`✅ *Code généré*\n\n\`${code}\`\n\n📅 Valide pour *${days} jours* de Premium\n🔢 Usage unique\n\nEnvoyez ce code à votre client 1xbet.`);
 });
 
@@ -725,6 +742,7 @@ bot.command('promo', async (ctx) => {
   }
   entry.usedBy = userId;
   entry.usedAt = new Date().toISOString();
+  saveData();
 
   const userName = [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(' ');
   const userHandle = ctx.from.username ? `@${ctx.from.username}` : `ID: ${userId}`;
@@ -800,6 +818,7 @@ bot.command('verifier', async (ctx) => {
       const expiresAt = new Date(Date.now() + plan.days * 24 * 60 * 60 * 1000);
       premiumUsers[userId] = { plan: pending.planKey, expiresAt: expiresAt.toISOString(), orderId: pending.orderId };
       delete pendingPayments[userId];
+      saveData();
 
       await ctx.telegram.editMessageText(
         ctx.chat.id, loading.message_id, null,
@@ -830,6 +849,7 @@ bot.command('activer', async (ctx) => {
   const expiresAt = new Date(Date.now() + plan.days * 24 * 60 * 60 * 1000);
   premiumUsers[targetId] = { plan: planKey, expiresAt: expiresAt.toISOString() };
   delete pendingPayments[targetId];
+  saveData();
 
   try {
     await ctx.telegram.sendMessage(targetId,
@@ -980,8 +1000,6 @@ bot.catch((err, ctx) => {
 
 // Serveur HTTP — Mini App + API
 const http = require('http');
-const fs = require('fs');
-const path = require('path');
 const PORT = process.env.PORT || 3000;
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL || '';
 
@@ -1100,6 +1118,7 @@ async function handleApi(req, res, urlObj) {
             } else {
               favoriteTeams[userId] = favoriteTeams[userId].filter(f => f.name !== team.name);
             }
+            saveData();
             res.end(JSON.stringify({ ok: true, favorites: favoriteTeams[userId] }));
           } catch(e) { res.end(JSON.stringify({ ok: false, error: e.message })); }
         });
@@ -1143,19 +1162,34 @@ async function handleApi(req, res, urlObj) {
       }
       entry.usedBy = userId;
       entry.usedAt = new Date().toISOString();
+      saveData();
       const finalExp = new Date(premiumUsers[userId].expiresAt);
       const notifMsg2 = `🎁 *Code promo utilisé*\n\n🔑 Code : \`${code}\`\n🆔 \`${userId}\`\n📅 Premium jusqu'au ${finalExp.toLocaleDateString('fr-FR')}\n📱 Via : Mini App`;
       for (const adminId of ADMIN_IDS) {
         bot.telegram.sendMessage(adminId, notifMsg2, { parse_mode: 'Markdown' }).catch(() => {});
       }
       res.end(JSON.stringify({ ok: true, extended, expiresAt: finalExp.toISOString() }));
+    } else if (urlObj.pathname === '/api/admin/activer') {
+      // Activation Premium admin depuis la Mini App
+      const requesterId = urlObj.searchParams.get('requesterId');
+      const targetId = urlObj.searchParams.get('userId') || requesterId;
+      const planKey = urlObj.searchParams.get('plan') || 'mensuel';
+      if (!ADMIN_IDS.includes(parseInt(requesterId))) {
+        return res.end(JSON.stringify({ ok: false, error: 'Accès refusé' }));
+      }
+      const plan = PLANS[planKey] || PLANS.mensuel;
+      const expiresAt = new Date(Date.now() + plan.days * 24 * 60 * 60 * 1000);
+      premiumUsers[targetId] = { plan: planKey, expiresAt: expiresAt.toISOString() };
+      saveData();
+      res.end(JSON.stringify({ ok: true, expiresAt: expiresAt.toISOString(), plan: planKey }));
     } else if (urlObj.pathname === '/api/profil') {
       const userId = urlObj.searchParams.get('userId');
+      const isAdmin = ADMIN_IDS.includes(parseInt(userId));
       const prem = userId ? premiumUsers[userId] : null;
       if (prem) {
-        res.end(JSON.stringify({ ok: true, isPremium: true, plan: prem.plan || 'mensuel', expiresAt: prem.expiresAt }));
+        res.end(JSON.stringify({ ok: true, isPremium: true, plan: prem.plan || 'mensuel', expiresAt: prem.expiresAt, isAdmin }));
       } else {
-        res.end(JSON.stringify({ ok: true, isPremium: false }));
+        res.end(JSON.stringify({ ok: true, isPremium: false, isAdmin }));
       }
     } else {
       res.writeHead(404);
