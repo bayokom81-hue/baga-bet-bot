@@ -113,14 +113,14 @@ async function tsdb(endpoint) {
 
 // IDs des ligues TheSportsDB
 const TSDB_LEAGUES = [
-  { id: '4328', name: 'Premier League',     logo: 'https://www.thesportsdb.com/images/media/league/badge/i6o0kh1549879062.png' },
-  { id: '4335', name: 'La Liga',            logo: 'https://www.thesportsdb.com/images/media/league/badge/7onmyv1534768460.png' },
-  { id: '4331', name: 'Bundesliga',         logo: 'https://www.thesportsdb.com/images/media/league/badge/0j55yv1534764906.png' },
-  { id: '4332', name: 'Serie A',            logo: 'https://www.thesportsdb.com/images/media/league/badge/zkwyk11534768505.png' },
-  { id: '4334', name: 'Ligue 1',            logo: 'https://www.thesportsdb.com/images/media/league/badge/323yvv1534770164.png' },
-  { id: '4480', name: 'Champions League',   logo: 'https://www.thesportsdb.com/images/media/league/badge/qoYDXl1621338005.png' },
-  { id: '4337', name: 'Eredivisie',         logo: '' },
-  { id: '4344', name: 'Primeira Liga',      logo: '' },
+  { id: '4328', name: 'Premier League',     searchName: 'English Premier League', logo: 'https://www.thesportsdb.com/images/media/league/badge/i6o0kh1549879062.png' },
+  { id: '4335', name: 'La Liga',            searchName: 'Spanish La Liga',        logo: 'https://www.thesportsdb.com/images/media/league/badge/7onmyv1534768460.png' },
+  { id: '4331', name: 'Bundesliga',         searchName: 'German Bundesliga',      logo: 'https://www.thesportsdb.com/images/media/league/badge/0j55yv1534764906.png' },
+  { id: '4332', name: 'Serie A',            searchName: 'Italian Serie A',        logo: 'https://www.thesportsdb.com/images/media/league/badge/zkwyk11534768505.png' },
+  { id: '4334', name: 'Ligue 1',            searchName: 'French Ligue 1',         logo: 'https://www.thesportsdb.com/images/media/league/badge/323yvv1534770164.png' },
+  { id: '4480', name: 'Champions League',   searchName: 'UEFA Champions League',  logo: 'https://www.thesportsdb.com/images/media/league/badge/qoYDXl1621338005.png' },
+  { id: '4337', name: 'Eredivisie',         searchName: 'Dutch Eredivisie',       logo: '' },
+  { id: '4344', name: 'Primeira Liga',      searchName: 'Portuguese Primeira Liga',logo: '' },
 ];
 
 // Cache des matchs
@@ -1170,10 +1170,11 @@ async function handleApi(req, res, urlObj) {
       }
       res.end(JSON.stringify({ ok: true, extended, expiresAt: finalExp.toISOString() }));
     } else if (urlObj.pathname === '/api/ligues') {
-      // Liste des ligues avec leurs équipes via TheSportsDB
       const leagueId = urlObj.searchParams.get('id');
       if (leagueId) {
-        const data = await tsdb(`lookup_all_teams.php?id=${leagueId}`);
+        const league = TSDB_LEAGUES.find(l => l.id === leagueId);
+        const searchName = league?.searchName || leagueId;
+        const data = await tsdb(`search_all_teams.php?l=${encodeURIComponent(searchName)}`);
         const teams = (data?.teams || []).map(t => ({
           id: t.idTeam, name: t.strTeam,
           logo: t.strTeamBadge || '', short: t.strTeamShort || t.strTeam,
