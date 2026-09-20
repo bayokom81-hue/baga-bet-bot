@@ -69,9 +69,9 @@ const PLANS = {
 
 // Utilisateurs premium (en mémoire — persistance basique)
 const premiumUsers = {};
-const PROMO_CODE = '1x_5737357';
 const PROMO_DAYS = 30;
-const promoUsed = {}; // { userId: true } — chaque utilisateur ne peut l'utiliser qu'une fois
+// Codes générés par l'admin : { code: { days, createdAt, usedBy: null } }
+const promoCodes = {};
 
 // Équipes favorites par utilisateur { userId: [{name, logo, competition}] }
 const favoriteTeams = {};
@@ -663,37 +663,63 @@ bot.command('abonner', (ctx) => {
 });
 
 // /confirmer — utilisateur envoie son numéro après paiement
+// Commande admin : générer un code unique
+bot.command('gencode', async (ctx) => {
+  if (!ADMIN_IDS.includes(ctx.from?.id)) return ctx.reply('⛔ Accès réservé aux administrateurs.');
+  const days = parseInt(ctx.message?.text?.split(' ')[1]) || PROMO_DAYS;
+  const code = 'BB' + Math.random().toString(36).substring(2, 8).toUpperCase();
+  promoCodes[code] = { days, createdAt: new Date().toISOString(), usedBy: null };
+  ctx.replyWithMarkdown(`✅ *Code généré*\n\n\`${code}\`\n\n📅 Valide pour *${days} jours* de Premium\n🔢 Usage unique\n\nEnvoyez ce code à votre client 1xbet.`);
+});
+
+// Commande admin : liste des codes
+bot.command('codes', async (ctx) => {
+  if (!ADMIN_IDS.includes(ctx.from?.id)) return ctx.reply('⛔ Accès réservé aux administrateurs.');
+  const all = Object.entries(promoCodes);
+  if (!all.length) return ctx.reply('Aucun code généré.');
+  const unused = all.filter(([,v]) => !v.usedBy);
+  const used = all.filter(([,v]) => v.usedBy);
+  let msg = `📋 *Codes promo*\n\n✅ *Disponibles (${unused.length})*\n`;
+  for (const [c, v] of unused) msg += `• \`${c}\` — ${v.days}j\n`;
+  if (used.length) {
+    msg += `\n🔒 *Utilisés (${used.length})*\n`;
+    for (const [c, v] of used) msg += `• \`${c}\` — par \`${v.usedBy}\`\n`;
+  }
+  ctx.replyWithMarkdown(msg);
+});
+
+// Utilisateur : activer un code promo
 bot.command('promo', async (ctx) => {
   const userId = String(ctx.from?.id);
-  const code = ctx.message?.text?.split(' ')[1]?.trim();
+  const code = ctx.message?.text?.split(' ')[1]?.trim()?.toUpperCase();
 
   if (!code) {
-    return ctx.replyWithMarkdown(`🎁 *Code Promo 1xbet*\n\nVous avez un code promo partenaire ?\nEntrez-le avec la commande :\n\`/promo VOTRE_CODE\``);
+    return ctx.replyWithMarkdown(`🎁 *Code Promo*\n\nVous avez reçu un code promo ?\nActivez-le avec :\n\`/promo VOTRE_CODE\``);
   }
-  if (code !== PROMO_CODE) {
-    return ctx.replyWithMarkdown('❌ Code promo invalide.\n\nVérifiez le code et réessayez.');
-  }
-  if (promoUsed[userId]) {
-    return ctx.replyWithMarkdown('⚠️ Vous avez déjà utilisé ce code promo.\n\nChaque code ne peut être utilisé qu\'une seule fois par compte.');
-  }
+  const entry = promoCodes[code];
+  if (!entry) return ctx.replyWithMarkdown('❌ Code invalide ou inexistant.\n\nVérifiez le code envoyé par l\'administrateur.');
+  if (entry.usedBy) return ctx.replyWithMarkdown('⚠️ Ce code a déjà été utilisé.\n\nChaque code est à usage unique.');
+
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + entry.days);
   if (premiumUsers[userId]) {
     const exp = new Date(premiumUsers[userId].expiresAt);
-    exp.setDate(exp.getDate() + PROMO_DAYS);
+    exp.setDate(exp.getDate() + entry.days);
     premiumUsers[userId].expiresAt = exp.toISOString();
-    promoUsed[userId] = true;
-    return ctx.replyWithMarkdown(`✅ *${PROMO_DAYS} jours Premium ajoutés !*\n\nVotre abonnement a été prolongé jusqu'au ${exp.toLocaleDateString('fr-FR')}.`);
+  } else {
+    premiumUsers[userId] = { plan: 'promo_1xbet', expiresAt: expiresAt.toISOString() };
   }
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + PROMO_DAYS);
-  premiumUsers[userId] = { plan: 'promo_1xbet', expiresAt: expiresAt.toISOString() };
-  promoUsed[userId] = true;
+  entry.usedBy = userId;
+  entry.usedAt = new Date().toISOString();
+
   const userName = [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(' ');
   const userHandle = ctx.from.username ? `@${ctx.from.username}` : `ID: ${userId}`;
-  const notifMsg = `🎁 *Code promo 1xbet utilisé*\n\n👤 ${userName} (${userHandle})\n🆔 \`${userId}\`\n📅 Premium jusqu'au ${expiresAt.toLocaleDateString('fr-FR')}\n📱 Via : Bot Telegram`;
+  const exp = new Date(premiumUsers[userId].expiresAt);
+  const notifMsg = `🎁 *Code promo utilisé*\n\n🔑 Code : \`${code}\`\n👤 ${userName} (${userHandle})\n🆔 \`${userId}\`\n📅 Premium jusqu'au ${exp.toLocaleDateString('fr-FR')}\n📱 Via : Bot`;
   for (const adminId of ADMIN_IDS) {
     bot.telegram.sendMessage(adminId, notifMsg, { parse_mode: 'Markdown' }).catch(() => {});
   }
-  ctx.replyWithMarkdown(`🎉 *Premium activé !*\n\n✅ Votre accès Premium est actif pour *${PROMO_DAYS} jours*\n📅 Expire le : ${expiresAt.toLocaleDateString('fr-FR')}\n\n💎 Profitez de toutes les fonctionnalités Premium :\n• Analyses H2H illimitées\n• Coupon 8-10 matchs\n• 10 équipes favorites\n• Historique des coupons\n• Alertes matchs\n\n🔗 Partenaire officiel : *1xbet* — Code : \`${PROMO_CODE}\``);
+  ctx.replyWithMarkdown(`🎉 *Premium activé !*\n\n✅ Accès Premium pour *${entry.days} jours*\n📅 Expire le : ${exp.toLocaleDateString('fr-FR')}\n\n💎 Fonctionnalités débloquées :\n• Analyses H2H illimitées\n• Coupon 8-10 matchs\n• 10 équipes favorites\n• Historique des coupons\n• Alertes matchs`);
 });
 
 bot.command('confirmer', async (ctx) => {
@@ -1088,26 +1114,30 @@ async function handleApi(req, res, urlObj) {
       res.end(JSON.stringify({ ok: true, history }));
     } else if (urlObj.pathname === '/api/promo') {
       const userId = urlObj.searchParams.get('userId');
-      const code = urlObj.searchParams.get('code');
+      const code = urlObj.searchParams.get('code')?.toUpperCase();
       if (!userId) return res.end(JSON.stringify({ ok: false, error: 'userId requis' }));
-      if (!code || code !== PROMO_CODE) return res.end(JSON.stringify({ ok: false, error: 'Code promo invalide' }));
-      if (promoUsed[userId]) return res.end(JSON.stringify({ ok: false, error: 'Code déjà utilisé' }));
-      if (premiumUsers[userId]) {
+      if (!code) return res.end(JSON.stringify({ ok: false, error: 'Code requis' }));
+      const entry = promoCodes[code];
+      if (!entry) return res.end(JSON.stringify({ ok: false, error: 'Code invalide' }));
+      if (entry.usedBy) return res.end(JSON.stringify({ ok: false, error: 'Code déjà utilisé' }));
+      const extended = !!premiumUsers[userId];
+      if (extended) {
         const exp = new Date(premiumUsers[userId].expiresAt);
-        exp.setDate(exp.getDate() + PROMO_DAYS);
+        exp.setDate(exp.getDate() + entry.days);
         premiumUsers[userId].expiresAt = exp.toISOString();
-        promoUsed[userId] = true;
-        return res.end(JSON.stringify({ ok: true, extended: true, expiresAt: exp.toISOString() }));
+      } else {
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + entry.days);
+        premiumUsers[userId] = { plan: 'promo_1xbet', expiresAt: expiresAt.toISOString() };
       }
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + PROMO_DAYS);
-      premiumUsers[userId] = { plan: 'promo_1xbet', expiresAt: expiresAt.toISOString() };
-      promoUsed[userId] = true;
-      const notifMsg2 = `🎁 *Code promo 1xbet utilisé*\n\n🆔 \`${userId}\`\n📅 Premium jusqu'au ${expiresAt.toLocaleDateString('fr-FR')}\n📱 Via : Mini App`;
+      entry.usedBy = userId;
+      entry.usedAt = new Date().toISOString();
+      const finalExp = new Date(premiumUsers[userId].expiresAt);
+      const notifMsg2 = `🎁 *Code promo utilisé*\n\n🔑 Code : \`${code}\`\n🆔 \`${userId}\`\n📅 Premium jusqu'au ${finalExp.toLocaleDateString('fr-FR')}\n📱 Via : Mini App`;
       for (const adminId of ADMIN_IDS) {
         bot.telegram.sendMessage(adminId, notifMsg2, { parse_mode: 'Markdown' }).catch(() => {});
       }
-      res.end(JSON.stringify({ ok: true, extended: false, expiresAt: expiresAt.toISOString() }));
+      res.end(JSON.stringify({ ok: true, extended, expiresAt: finalExp.toISOString() }));
     } else if (urlObj.pathname === '/api/profil') {
       const userId = urlObj.searchParams.get('userId');
       const prem = userId ? premiumUsers[userId] : null;
