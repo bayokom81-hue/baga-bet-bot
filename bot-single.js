@@ -169,11 +169,32 @@ async function findTeam(name) {
   return found || null;
 }
 
-// Matchs du jour toutes compétitions gratuites
+// Cache matchs (2h TTL)
+const matchesCache = { data: null, loadedAt: 0, dateKey: null };
+
+// Charger les matchs par compétition (plus fiable que l'endpoint global)
+async function getMatchesByDateRange(dateFrom, dateTo) {
+  const cacheKey = `${dateFrom}_${dateTo}`;
+  if (matchesCache.dateKey === cacheKey && matchesCache.data && Date.now() - matchesCache.loadedAt < 2 * 60 * 60 * 1000) {
+    return matchesCache.data;
+  }
+  const COMPS = ['PL','PD','BL1','SA','FL1','CL','PPL','DED','BSA'];
+  const all = [];
+  for (const comp of COMPS) {
+    try {
+      const data = await apiGet(`/competitions/${comp}/matches`, { dateFrom, dateTo });
+      if (data?.matches?.length) all.push(...data.matches);
+    } catch(e) { continue; }
+  }
+  matchesCache.data = all;
+  matchesCache.loadedAt = Date.now();
+  matchesCache.dateKey = cacheKey;
+  return all;
+}
+
 async function getTodayMatches() {
   const today = new Date().toISOString().split('T')[0];
-  const data = await apiGet('/matches', { dateFrom: today, dateTo: today });
-  return data?.matches || [];
+  return getMatchesByDateRange(today, today);
 }
 
 // ── Données démo ──────────────────────────────────────────────────
@@ -897,11 +918,10 @@ async function handleApi(req, res, urlObj) {
     } else if (urlObj.pathname === '/api/matchs-a-venir') {
       const today = new Date();
       const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
-      const inSevenDays = new Date(today); inSevenDays.setDate(today.getDate() + 7);
+      const inFourteenDays = new Date(today); inFourteenDays.setDate(today.getDate() + 14);
       const dateFrom = tomorrow.toISOString().split('T')[0];
-      const dateTo = inSevenDays.toISOString().split('T')[0];
-      const data = await apiGet('/matches', { dateFrom, dateTo, status: 'SCHEDULED' });
-      const rawMatches = data?.matches || [];
+      const dateTo = inFourteenDays.toISOString().split('T')[0];
+      const rawMatches = await getMatchesByDateRange(dateFrom, dateTo);
       const matches = rawMatches.slice(0, 60).map(m => ({
         id: m.id,
         date: m.utcDate ? new Date(m.utcDate).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Abidjan' }) : '',
