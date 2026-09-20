@@ -1155,7 +1155,13 @@ async function handleApi(req, res, urlObj) {
     } else if (urlObj.pathname === '/api/analyse') {
       const teamName = urlObj.searchParams.get('team');
       if (!teamName) return res.end(JSON.stringify({ ok: false, error: 'Paramètre team manquant' }));
+      // Timeout 25s pour éviter que la requête HTTP reste bloquée
+      const analyseTimeout = setTimeout(() => {
+        if (!res.writableEnded) res.end(JSON.stringify({ ok: false, error: 'Délai dépassé. Cache encore en chargement, réessayez dans 30s.' }));
+      }, 25000);
       const data = await getTeamAnalysis(teamName);
+      clearTimeout(analyseTimeout);
+      if (res.writableEnded) return;
       if (!data) return res.end(JSON.stringify({ ok: false, error: `Équipe "${teamName}" introuvable` }));
       const { team, competition, lastMatches, form, wins, draws, losses, avgFor, avgAga, played } = data;
       const lastMatchesMapped = lastMatches.slice(0, 5).map(m => {
