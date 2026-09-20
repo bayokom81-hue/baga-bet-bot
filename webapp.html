@@ -165,6 +165,23 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI'
 .plan-btn.gold{background:linear-gradient(135deg,#ffd54f,#ff8f00)}
 .plan-btn:active{opacity:.85}
 
+/* ── Ligues ── */
+.league-card{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px;cursor:pointer;transition:border-color .2s}
+.league-card:active{border-color:var(--accent)}
+.league-logo{width:44px;height:44px;border-radius:8px;object-fit:contain;background:var(--bg);padding:4px}
+.league-logo-placeholder{width:44px;height:44px;border-radius:8px;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:20px}
+.league-info{flex:1}
+.league-name{font-weight:700;font-size:14px}
+.league-country{font-size:11px;color:var(--muted);margin-top:2px}
+.league-chevron{color:var(--muted);font-size:18px}
+.team-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}
+.team-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:12px 8px;text-align:center;cursor:pointer;transition:border-color .2s}
+.team-card:active{border-color:var(--accent)}
+.team-logo{width:40px;height:40px;object-fit:contain;margin:0 auto 6px;display:block}
+.team-logo-placeholder{width:40px;height:40px;border-radius:50%;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;margin:0 auto 6px}
+.team-name{font-size:11px;font-weight:600;line-height:1.3}
+.back-btn{display:flex;align-items:center;gap:6px;background:none;border:none;color:var(--accent);font-size:13px;font-weight:600;padding:0 0 12px;cursor:pointer}
+
 /* ── Profil ── */
 .profile-hero{background:linear-gradient(135deg,#0d1a0d,#0d150d);border:1px solid var(--border);border-radius:var(--r);padding:20px;margin-bottom:12px;text-align:center}
 .profile-avatar{width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#00e676,#00c853);display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 12px;border:3px solid var(--accent-border)}
@@ -221,6 +238,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI'
   </div>
   <div id="matchs-today"><div class="loader"><div class="spinner"></div>Chargement des matchs...</div></div>
   <div id="matchs-upcoming" style="display:none"></div>
+</div>
+
+<div id="page-ligues" class="page">
+  <div class="section-title">🏆 Championnats</div>
+  <div id="ligues-content"></div>
 </div>
 
 <div id="page-analyse" class="page">
@@ -320,14 +342,14 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI'
     Matchs
     <div class="nav-indicator"></div>
   </button>
+  <button class="nav-btn" id="nav-ligues" onclick="showPage('ligues')">
+    <svg viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>
+    Ligues
+    <div class="nav-indicator"></div>
+  </button>
   <button class="nav-btn" id="nav-analyse" onclick="showPage('analyse')">
     <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
     Analyse
-    <div class="nav-indicator"></div>
-  </button>
-  <button class="nav-btn" id="nav-favoris" onclick="showPage('favoris')">
-    <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-    Favoris
     <div class="nav-indicator"></div>
   </button>
   <button class="nav-btn" id="nav-coupon" onclick="showPage('coupon')">
@@ -364,6 +386,7 @@ function showPage(name) {
   document.getElementById('page-' + name).classList.add('active');
   document.getElementById('nav-' + name).classList.add('active');
   if (name === 'matchs' && !matchTabLoaded.today) loadMatchs();
+  if (name === 'ligues' && !document.getElementById('ligues-loaded')) loadLigues();
   if (name === 'favoris') loadFavoris();
   if (name === 'coupon' && !document.getElementById('coupon-loaded')) loadCoupon();
   if (name === 'profil') loadProfil();
@@ -826,6 +849,65 @@ async function loadProfil() {
   <div class="disclaimer">BetAnalyse — Pronostics à titre informatif uniquement.<br>Pariez de façon responsable.</div>`;
 
   el.innerHTML = html;
+}
+
+// ── Ligues ────────────────────────────────────────────────────────
+const LEAGUE_COUNTRIES = {
+  '4328': 'Angleterre', '4335': 'Espagne', '4331': 'Allemagne',
+  '4332': 'Italie', '4334': 'France', '4480': 'Europe',
+  '4337': 'Pays-Bas', '4344': 'Portugal',
+};
+
+async function loadLigues() {
+  const el = document.getElementById('ligues-content');
+  el.innerHTML = `<div class="loader"><div class="spinner"></div>Chargement...</div>`;
+  try {
+    const r = await fetch(BASE + '/api/ligues');
+    const d = await r.json();
+    el.id = 'ligues-loaded';
+    if (!d.ok || !d.leagues?.length) { el.innerHTML = '<div class="empty-state">Aucune ligue disponible</div>'; return; }
+    el.innerHTML = d.leagues.map(l => `
+      <div class="league-card" onclick="loadLeagueTeams('${l.id}','${l.name}')">
+        ${l.logo ? `<img class="league-logo" src="${l.logo}" onerror="this.style.display='none'">` : `<div class="league-logo-placeholder">🏆</div>`}
+        <div class="league-info">
+          <div class="league-name">${l.name}</div>
+          <div class="league-country">${LEAGUE_COUNTRIES[l.id] || ''}</div>
+        </div>
+        <span class="league-chevron">›</span>
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = '<div class="empty-state">Erreur de chargement</div>';
+  }
+}
+
+async function loadLeagueTeams(leagueId, leagueName) {
+  const el = document.getElementById('ligues-loaded') || document.getElementById('ligues-content');
+  el.innerHTML = `
+    <button class="back-btn" onclick="loadLigues()">‹ Retour aux ligues</button>
+    <div class="section-title" style="margin-bottom:10px">${leagueName}</div>
+    <div class="loader"><div class="spinner"></div>Chargement des équipes...</div>`;
+  try {
+    const r = await fetch(`${BASE}/api/ligues?id=${leagueId}`);
+    const d = await r.json();
+    if (!d.ok || !d.teams?.length) { el.innerHTML += '<div class="empty-state">Aucune équipe trouvée</div>'; return; }
+    const grid = document.createElement('div');
+    grid.className = 'team-grid';
+    grid.innerHTML = d.teams.map(t => `
+      <div class="team-card" onclick="analyseFromLeague('${t.name.replace(/'/g,"\\'")}')">
+        ${t.logo ? `<img class="team-logo" src="${t.logo}" onerror="this.parentNode.querySelector('.team-logo').style.display='none'">` : `<div class="team-logo-placeholder">⚽</div>`}
+        <div class="team-name">${t.name}</div>
+      </div>`).join('');
+    el.querySelector('.loader')?.remove();
+    el.appendChild(grid);
+  } catch(e) {
+    el.innerHTML += '<div class="empty-state">Erreur de chargement</div>';
+  }
+}
+
+function analyseFromLeague(teamName) {
+  showPage('analyse');
+  document.getElementById('search-input').value = teamName;
+  doAnalyse();
 }
 
 // ── Admin ─────────────────────────────────────────────────────────

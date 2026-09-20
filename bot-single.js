@@ -1169,6 +1169,19 @@ async function handleApi(req, res, urlObj) {
         bot.telegram.sendMessage(adminId, notifMsg2, { parse_mode: 'Markdown' }).catch(() => {});
       }
       res.end(JSON.stringify({ ok: true, extended, expiresAt: finalExp.toISOString() }));
+    } else if (urlObj.pathname === '/api/ligues') {
+      // Liste des ligues avec leurs équipes via TheSportsDB
+      const leagueId = urlObj.searchParams.get('id');
+      if (leagueId) {
+        const data = await tsdb(`lookup_all_teams.php?id=${leagueId}`);
+        const teams = (data?.teams || []).map(t => ({
+          id: t.idTeam, name: t.strTeam,
+          logo: t.strTeamBadge || '', short: t.strTeamShort || t.strTeam,
+        }));
+        res.end(JSON.stringify({ ok: true, teams }));
+      } else {
+        res.end(JSON.stringify({ ok: true, leagues: TSDB_LEAGUES }));
+      }
     } else if (urlObj.pathname === '/api/admin/activer') {
       // Activation Premium admin depuis la Mini App
       const requesterId = urlObj.searchParams.get('requesterId');
