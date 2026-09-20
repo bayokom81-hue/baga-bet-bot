@@ -246,6 +246,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI'
 </div>
 
 <div id="page-analyse" class="page">
+  <div id="analyse-back-btn" style="display:none">
+    <button class="back-btn" onclick="showPage('ligues')">‹ Retour aux ligues</button>
+  </div>
   <div class="search-wrap">
     <span class="search-icon">🔍</span>
     <input class="search-input" id="search-input" type="text" placeholder="Ex: Barca, PSG, Real, Bayern..." autocomplete="off">
@@ -383,6 +386,8 @@ let profileData = null;
 function showPage(name) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  // Cacher le bouton retour si on navigue manuellement vers analyse
+  if (name === 'analyse') { const bb = document.getElementById('analyse-back-btn'); if(bb) bb.style.display='none'; }
   document.getElementById('page-' + name).classList.add('active');
   document.getElementById('nav-' + name).classList.add('active');
   if (name === 'matchs' && !matchTabLoaded.today) loadMatchs();
@@ -905,9 +910,10 @@ async function loadLeagueTeams(leagueId, leagueName) {
 }
 
 function analyseFromLeague(teamName) {
-  showPage('analyse');
   document.getElementById('search-input').value = teamName;
-  doAnalyse();
+  showPage('analyse');
+  document.getElementById('analyse-back-btn').style.display = 'block';
+  setTimeout(() => doAnalyse(), 100);
 }
 
 // ── Admin ─────────────────────────────────────────────────────────
