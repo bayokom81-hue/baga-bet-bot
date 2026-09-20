@@ -169,32 +169,64 @@ async function findTeam(name) {
   return found || null;
 }
 
-// Cache matchs (2h TTL)
-const matchesCache = { data: null, loadedAt: 0, dateKey: null };
+// Cache matchs par compétition (2h TTL) — chargé en arrière-plan
+const matchesCache = {
+  today: { data: [], loadedAt: 0, dateKey: '' },
+  upcoming: { data: [], loadedAt: 0, dateKey: '' },
+  loading: false,
+};
+const MATCH_COMPS = ['PL','PD','BL1','SA','FL1','CL','PPL','DED','BSA'];
 
-// Charger les matchs par compétition (plus fiable que l'endpoint global)
-async function getMatchesByDateRange(dateFrom, dateTo) {
-  const cacheKey = `${dateFrom}_${dateTo}`;
-  if (matchesCache.dateKey === cacheKey && matchesCache.data && Date.now() - matchesCache.loadedAt < 2 * 60 * 60 * 1000) {
-    return matchesCache.data;
+async function refreshMatchesCache() {
+  if (matchesCache.loading) return;
+  matchesCache.loading = true;
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
+    const in14 = new Date(); in14.setDate(in14.getDate()+14);
+    const dateFrom2 = tomorrow.toISOString().split('T')[0];
+    const dateTo2 = in14.toISOString().split('T')[0];
+
+    const todayAll = [], upcomingAll = [];
+    for (const comp of MATCH_COMPS) {
+      const data = await apiGet(`/competitions/${comp}/matches`, { dateFrom: today, dateTo: dateTo2 });
+      if (data?.matches?.length) {
+        for (const m of data.matches) {
+          const d = m.utcDate?.split('T')[0];
+          if (d === today) todayAll.push(m);
+          else if (d > today) upcomingAll.push(m);
+        }
+      }
+    }
+    matchesCache.today = { data: todayAll, loadedAt: Date.now(), dateKey: today };
+    matchesCache.upcoming = { data: upcomingAll, loadedAt: Date.now(), dateKey: today };
+    console.log(`Cache matchs: ${todayAll.length} aujourd'hui, ${upcomingAll.length} à venir`);
+  } catch(e) {
+    console.error('refreshMatchesCache:', e.message);
+  } finally {
+    matchesCache.loading = false;
   }
-  const COMPS = ['PL','PD','BL1','SA','FL1','CL','PPL','DED','BSA'];
-  const all = [];
-  for (const comp of COMPS) {
-    try {
-      const data = await apiGet(`/competitions/${comp}/matches`, { dateFrom, dateTo });
-      if (data?.matches?.length) all.push(...data.matches);
-    } catch(e) { continue; }
-  }
-  matchesCache.data = all;
-  matchesCache.loadedAt = Date.now();
-  matchesCache.dateKey = cacheKey;
-  return all;
 }
 
 async function getTodayMatches() {
   const today = new Date().toISOString().split('T')[0];
-  return getMatchesByDateRange(today, today);
+  const ttl = 2 * 60 * 60 * 1000;
+  if (matchesCache.today.dateKey === today && Date.now() - matchesCache.today.loadedAt < ttl) {
+    return matchesCache.today.data;
+  }
+  // Cache périmé — retourner ce qu'on a et relancer en arrière-plan
+  if (!matchesCache.loading) refreshMatchesCache();
+  return matchesCache.today.data;
+}
+
+async function getUpcomingMatches() {
+  const today = new Date().toISOString().split('T')[0];
+  const ttl = 2 * 60 * 60 * 1000;
+  if (matchesCache.upcoming.dateKey === today && Date.now() - matchesCache.upcoming.loadedAt < ttl) {
+    return matchesCache.upcoming.data;
+  }
+  if (!matchesCache.loading) refreshMatchesCache();
+  return matchesCache.upcoming.data;
 }
 
 // ── Données démo ──────────────────────────────────────────────────
@@ -897,8 +929,16 @@ async function handleApi(req, res, urlObj) {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Access-Control-Allow-Origin', '*');
   try {
-    if (urlObj.pathname === '/api/matchs') {
+    if (urlObj.pathname === '/api/cache-status') {
+      return res.end(JSON.stringify({
+        ok: true,
+        loading: matchesCache.loading,
+        today: { count: matchesCache.today.data.length, age: matchesCache.today.loadedAt ? Math.round((Date.now()-matchesCache.today.loadedAt)/1000)+'s' : 'jamais' },
+        upcoming: { count: matchesCache.upcoming.data.length, age: matchesCache.upcoming.loadedAt ? Math.round((Date.now()-matchesCache.upcoming.loadedAt)/1000)+'s' : 'jamais' },
+      }));
+    } else if (urlObj.pathname === '/api/matchs') {
       const rawMatches = await getTodayMatches();
+      const loading = matchesCache.loading && matchesCache.today.data.length === 0;
       const formatMatch = m => ({
         id: m.id,
         date: m.utcDate ? new Date(m.utcDate).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Abidjan' }) : '',
@@ -914,14 +954,9 @@ async function handleApi(req, res, urlObj) {
         scoreAway: m.score?.fullTime?.away,
       });
       const matches = rawMatches.slice(0, 40).map(formatMatch);
-      res.end(JSON.stringify({ ok: true, matches }));
+      res.end(JSON.stringify({ ok: true, matches, loading }));
     } else if (urlObj.pathname === '/api/matchs-a-venir') {
-      const today = new Date();
-      const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
-      const inFourteenDays = new Date(today); inFourteenDays.setDate(today.getDate() + 14);
-      const dateFrom = tomorrow.toISOString().split('T')[0];
-      const dateTo = inFourteenDays.toISOString().split('T')[0];
-      const rawMatches = await getMatchesByDateRange(dateFrom, dateTo);
+      const rawMatches = await getUpcomingMatches();
       const matches = rawMatches.slice(0, 60).map(m => ({
         id: m.id,
         date: m.utcDate ? new Date(m.utcDate).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Abidjan' }) : '',
@@ -1102,6 +1137,12 @@ function scheduleDailyAlerts() {
 bot.launch().then(() => {
   console.log(`✅ BAGA BET BOT démarré - Mode: ${DEMO_MODE ? 'DÉMO' : 'API RÉELLE'}`);
   scheduleDailyAlerts();
+  // Pré-charger les matchs en arrière-plan (pas de blocage)
+  if (!DEMO_MODE) {
+    setTimeout(() => refreshMatchesCache(), 2000);
+    // Rafraîchir toutes les 2h
+    setInterval(() => refreshMatchesCache(), 2 * 60 * 60 * 1000);
+  }
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));

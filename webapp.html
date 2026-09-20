@@ -355,13 +355,18 @@ function matchCardHtml(m, upcoming) {
   </div>`;
 }
 
-async function loadMatchs() {
+async function loadMatchs(force) {
   const el = document.getElementById('matchs-today');
+  if (force) matchTabLoaded.today = false;
   try {
     const res = await fetch(BASE + '/api/matchs');
     const data = await res.json();
     if (!data.matches?.length) {
-      el.innerHTML = `<div class="empty"><span class="big">😴</span>Pas de match aujourd'hui dans les ligues disponibles.<br><br><button class="search-btn" style="max-width:220px;margin:0 auto;display:block" onclick="switchMatchTab('upcoming')">🔜 Voir les matchs à venir</button></div>`;
+      if (data.loading) {
+        el.innerHTML = `<div class="empty"><span class="big">⏳</span>Chargement des matchs en cours...<br><small style="color:var(--muted)">Première ouverture — 1 à 2 minutes</small><br><br><button class="search-btn" style="max-width:220px;margin:0 auto;display:block;margin-top:12px" onclick="setTimeout(loadMatchs,5000);this.textContent='⏳ Actualisation...'">🔄 Réessayer dans 5s</button></div>`;
+      } else {
+        el.innerHTML = `<div class="empty"><span class="big">😴</span>Pas de match aujourd'hui dans les ligues disponibles.<br><br><button class="search-btn" style="max-width:220px;margin:0 auto;display:block" onclick="switchMatchTab('upcoming')">🔜 Voir les matchs à venir</button></div>`;
+      }
     } else {
       el.innerHTML = buildMatchCards(data.matches, false);
     }
