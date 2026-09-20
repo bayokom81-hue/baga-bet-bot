@@ -159,18 +159,42 @@ async function loadAllTeams() {
 }
 
 // Chercher une équipe par nom dans toutes les compétitions gratuites
-async function findTeam(name) {
-  const nameLower = name.toLowerCase().trim();
-  const resolved = TEAM_ALIASES[nameLower] || nameLower;
-  const allTeams = await loadAllTeams();
-  const found = allTeams.find(({ team: t }) =>
-    t.name.toLowerCase().includes(resolved) ||
+function matchTeamName(t, nameLower, resolved) {
+  return t.name.toLowerCase().includes(resolved) ||
     t.shortName?.toLowerCase().includes(resolved) ||
     t.tla?.toLowerCase() === resolved ||
     t.name.toLowerCase().includes(nameLower) ||
-    t.shortName?.toLowerCase().includes(nameLower)
-  );
-  return found || null;
+    t.shortName?.toLowerCase().includes(nameLower);
+}
+
+async function findTeam(name) {
+  const nameLower = name.toLowerCase().trim();
+  const resolved = TEAM_ALIASES[nameLower] || nameLower;
+
+  // Si le cache est déjà chargé, chercher dedans
+  if (teamsCache.data?.length) {
+    const found = teamsCache.data.find(({ team: t }) => matchTeamName(t, nameLower, resolved));
+    if (found) return found;
+  }
+
+  // Sinon chercher directement dans les compétitions une par une
+  for (const comp of FD_COMPETITIONS) {
+    try {
+      const data = await apiGet(`/competitions/${comp}/teams`);
+      if (data?.teams) {
+        // Stocker dans le cache partiel
+        for (const t of data.teams) {
+          if (!teamsCache.data) teamsCache.data = [];
+          if (!teamsCache.data.find(e => e.team.id === t.id)) {
+            teamsCache.data.push({ team: t, competition: data.competition });
+          }
+        }
+        const found = data.teams.find(t => matchTeamName(t, nameLower, resolved));
+        if (found) return { team: found, competition: data.competition };
+      }
+    } catch(e) { continue; }
+  }
+  return null;
 }
 
 // Cache matchs par compétition (2h TTL) — chargé en arrière-plan
