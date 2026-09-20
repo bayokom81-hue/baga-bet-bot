@@ -252,9 +252,9 @@ bot.command('start', (ctx) => {
   const name = ctx.from?.first_name || 'ami';
   const appUrl = RENDER_URL || `https://baga-bet-bot-1.onrender.com`;
   ctx.reply(
-    `⚽ Bienvenue sur BAGA BET BOT, ${name} !\n\nStatistiques et analyses sportives en temps réel.\n\n👇 Ouvre l'application :`,
+    `⚽ Bienvenue sur BetAnalyse BOT, ${name} !\n\nStatistiques et analyses sportives en temps réel.\n\n👇 Ouvre l'application :`,
     Markup.inlineKeyboard([
-      [Markup.button.webApp('🚀 Ouvrir BAGA BET', appUrl)],
+      [Markup.button.webApp('🚀 Ouvrir BetAnalyse', appUrl)],
     ])
   );
 });
@@ -262,7 +262,7 @@ bot.command('start', (ctx) => {
 // /help
 bot.command('help', (ctx) => {
   ctx.replyWithMarkdown(
-    `📋 *Commandes BAGA BET BOT*\n\n/start — Accueil\n/matchs — Matchs du jour\n/analyse NomEquipe — Analyse statistique\n/statistiques NomEquipe — Stats équipe\n/profil — Votre profil\n/premium — Abonnement Premium\n/abonner — Payer par Mobile Money\n/verifier — Vérifier votre paiement\n/help — Cette aide`
+    `📋 *Commandes BetAnalyse BOT*\n\n/start — Accueil\n/matchs — Matchs du jour\n/analyse NomEquipe — Analyse statistique\n/statistiques NomEquipe — Stats équipe\n/profil — Votre profil\n/premium — Abonnement Premium\n/abonner — Payer par Mobile Money\n/verifier — Vérifier votre paiement\n/help — Cette aide`
   );
 });
 
@@ -561,7 +561,7 @@ bot.command('coupon', async (ctx) => {
     const COTES = { '1': [1.5, 1.6, 1.7, 1.8, 2.0, 2.2], 'N': [3.0, 3.2, 3.4, 3.5], '2': [1.8, 2.0, 2.2, 2.5, 3.0] };
     const CONFIANCE = ['⭐⭐⭐ Haute', '⭐⭐ Moyenne', '⭐ Faible'];
 
-    let text = `🎯 *Coupon BAGA BET — ${new Date().toLocaleDateString('fr-FR')}*\n\n`;
+    let text = `🎯 *Coupon BetAnalyse — ${new Date().toLocaleDateString('fr-FR')}*\n\n`;
     let coteCombinee = 1;
 
     for (const m of sorted) {
@@ -608,7 +608,7 @@ bot.command('premium', (ctx) => {
     return ctx.replyWithMarkdown(`💎 *Vous êtes déjà Premium !*\n\n✅ Abonnement actif jusqu'au *${exp}*\n\nMerci de votre confiance 🙏`);
   }
   ctx.replyWithMarkdown(
-    `💎 *BAGA BET Premium*\n\n🔓 *Fonctionnalités exclusives :*\n• Analyses approfondies (xG, passes clés)\n• 20 équipes favorites\n• Statistiques sur 10 saisons\n• Comparaison d'équipes\n• Alertes matchs\n\n📦 *Choisissez votre formule :*`,
+    `💎 *BetAnalyse Premium*\n\n🔓 *Fonctionnalités exclusives :*\n• Analyses approfondies (xG, passes clés)\n• 20 équipes favorites\n• Statistiques sur 10 saisons\n• Comparaison d'équipes\n• Alertes matchs\n\n📦 *Choisissez votre formule :*`,
     Markup.inlineKeyboard([
       [Markup.button.callback('📅 Mensuel — 2 500 XOF', 'plan_mensuel')],
       [Markup.button.callback('📆 Trimestriel — 6 000 XOF', 'plan_trimestriel')],
@@ -653,7 +653,7 @@ bot.command('abonner', (ctx) => {
     return ctx.replyWithMarkdown(`💎 *Vous êtes déjà Premium !*\n\n✅ Abonnement actif jusqu'au *${exp}*`);
   }
   ctx.replyWithMarkdown(
-    `💎 *S'abonner à BAGA BET Premium*\n\nChoisissez votre formule :`,
+    `💎 *S'abonner à BetAnalyse Premium*\n\nChoisissez votre formule :`,
     Markup.inlineKeyboard([
       [Markup.button.callback('📅 Mensuel — 2 500 XOF', 'plan_mensuel')],
       [Markup.button.callback('📆 Trimestriel — 6 000 XOF', 'plan_trimestriel')],
@@ -857,7 +857,7 @@ bot.command('admin', async (ctx) => {
   const nbPremium = Object.keys(premiumUsers).length;
   const nbPending = Object.keys(pendingPayments).length;
   ctx.replyWithMarkdown(
-    `🛡️ *Panneau Admin BAGA BET*\n\n` +
+    `🛡️ *Panneau Admin BetAnalyse*\n\n` +
     `Bot actif ✅\nMode : ${DEMO_MODE ? 'Démo' : 'API réelle'}\n` +
     `Date : ${new Date().toLocaleString('fr-FR')}\n\n` +
     `💎 Abonnés Premium : *${nbPremium}*\n` +
@@ -922,7 +922,7 @@ bot.hears(['💎 Premium', 'Premium'], async (ctx) => {
     return ctx.replyWithMarkdown(`💎 *Vous êtes déjà Premium !*\n\n✅ Abonnement actif jusqu'au *${exp}*`);
   }
   ctx.replyWithMarkdown(
-    `💎 *BAGA BET Premium*\n\nChoisissez votre formule :`,
+    `💎 *BetAnalyse Premium*\n\nChoisissez votre formule :`,
     Markup.inlineKeyboard([
       [Markup.button.callback('📅 Mensuel — 2 500 XOF', 'plan_mensuel')],
       [Markup.button.callback('📆 Trimestriel — 6 000 XOF', 'plan_trimestriel')],
@@ -1168,7 +1168,7 @@ const server = http.createServer((req, res) => {
     res.end(fs.readFileSync(filePath));
   } else {
     res.writeHead(200);
-    res.end('BAGA BET BOT actif');
+    res.end('BetAnalyse BOT actif');
   }
 });
 
@@ -1231,7 +1231,7 @@ function scheduleDailyAlerts() {
 
 // Démarrage
 bot.launch().then(() => {
-  console.log(`✅ BAGA BET BOT démarré - Mode: ${DEMO_MODE ? 'DÉMO' : 'API RÉELLE'}`);
+  console.log(`✅ BetAnalyse BOT démarré - Mode: ${DEMO_MODE ? 'DÉMO' : 'API RÉELLE'}`);
   scheduleDailyAlerts();
   // Pré-charger les matchs en arrière-plan (pas de blocage)
   if (!DEMO_MODE) {
