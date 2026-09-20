@@ -407,6 +407,7 @@ Sois direct, concis et professionnel. Commence par "🔮 Analyse :" et termine p
     });
     return r.data?.choices?.[0]?.message?.content?.trim() || null;
   } catch(e) {
+    console.error('Groq error:', e.response?.data || e.message);
     return null;
   }
 }
