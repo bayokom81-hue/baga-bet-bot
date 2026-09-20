@@ -69,6 +69,9 @@ const PLANS = {
 
 // Utilisateurs premium (en mémoire — persistance basique)
 const premiumUsers = {};
+const PROMO_CODE = '1x_5737357';
+const PROMO_DAYS = 30;
+const promoUsed = {}; // { userId: true } — chaque utilisateur ne peut l'utiliser qu'une fois
 
 // Équipes favorites par utilisateur { userId: [{name, logo, competition}] }
 const favoriteTeams = {};
@@ -660,6 +663,39 @@ bot.command('abonner', (ctx) => {
 });
 
 // /confirmer — utilisateur envoie son numéro après paiement
+bot.command('promo', async (ctx) => {
+  const userId = String(ctx.from?.id);
+  const code = ctx.message?.text?.split(' ')[1]?.trim();
+
+  if (!code) {
+    return ctx.replyWithMarkdown(`🎁 *Code Promo 1xbet*\n\nVous avez un code promo partenaire ?\nEntrez-le avec la commande :\n\`/promo VOTRE_CODE\``);
+  }
+  if (code !== PROMO_CODE) {
+    return ctx.replyWithMarkdown('❌ Code promo invalide.\n\nVérifiez le code et réessayez.');
+  }
+  if (promoUsed[userId]) {
+    return ctx.replyWithMarkdown('⚠️ Vous avez déjà utilisé ce code promo.\n\nChaque code ne peut être utilisé qu\'une seule fois par compte.');
+  }
+  if (premiumUsers[userId]) {
+    const exp = new Date(premiumUsers[userId].expiresAt);
+    exp.setDate(exp.getDate() + PROMO_DAYS);
+    premiumUsers[userId].expiresAt = exp.toISOString();
+    promoUsed[userId] = true;
+    return ctx.replyWithMarkdown(`✅ *${PROMO_DAYS} jours Premium ajoutés !*\n\nVotre abonnement a été prolongé jusqu'au ${exp.toLocaleDateString('fr-FR')}.`);
+  }
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + PROMO_DAYS);
+  premiumUsers[userId] = { plan: 'promo_1xbet', expiresAt: expiresAt.toISOString() };
+  promoUsed[userId] = true;
+  const userName = [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(' ');
+  const userHandle = ctx.from.username ? `@${ctx.from.username}` : `ID: ${userId}`;
+  const notifMsg = `🎁 *Code promo 1xbet utilisé*\n\n👤 ${userName} (${userHandle})\n🆔 \`${userId}\`\n📅 Premium jusqu'au ${expiresAt.toLocaleDateString('fr-FR')}\n📱 Via : Bot Telegram`;
+  for (const adminId of ADMIN_IDS) {
+    bot.telegram.sendMessage(adminId, notifMsg, { parse_mode: 'Markdown' }).catch(() => {});
+  }
+  ctx.replyWithMarkdown(`🎉 *Premium activé !*\n\n✅ Votre accès Premium est actif pour *${PROMO_DAYS} jours*\n📅 Expire le : ${expiresAt.toLocaleDateString('fr-FR')}\n\n💎 Profitez de toutes les fonctionnalités Premium :\n• Analyses H2H illimitées\n• Coupon 8-10 matchs\n• 10 équipes favorites\n• Historique des coupons\n• Alertes matchs\n\n🔗 Partenaire officiel : *1xbet* — Code : \`${PROMO_CODE}\``);
+});
+
 bot.command('confirmer', async (ctx) => {
   const userId = ctx.from?.id;
   const phone = ctx.message?.text?.split(' ')[1]?.trim();
@@ -1050,6 +1086,36 @@ async function handleApi(req, res, urlObj) {
         .slice(0, 7)
         .map(([date, data]) => ({ date, ...data }));
       res.end(JSON.stringify({ ok: true, history }));
+    } else if (urlObj.pathname === '/api/promo') {
+      const userId = urlObj.searchParams.get('userId');
+      const code = urlObj.searchParams.get('code');
+      if (!userId) return res.end(JSON.stringify({ ok: false, error: 'userId requis' }));
+      if (!code || code !== PROMO_CODE) return res.end(JSON.stringify({ ok: false, error: 'Code promo invalide' }));
+      if (promoUsed[userId]) return res.end(JSON.stringify({ ok: false, error: 'Code déjà utilisé' }));
+      if (premiumUsers[userId]) {
+        const exp = new Date(premiumUsers[userId].expiresAt);
+        exp.setDate(exp.getDate() + PROMO_DAYS);
+        premiumUsers[userId].expiresAt = exp.toISOString();
+        promoUsed[userId] = true;
+        return res.end(JSON.stringify({ ok: true, extended: true, expiresAt: exp.toISOString() }));
+      }
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + PROMO_DAYS);
+      premiumUsers[userId] = { plan: 'promo_1xbet', expiresAt: expiresAt.toISOString() };
+      promoUsed[userId] = true;
+      const notifMsg2 = `🎁 *Code promo 1xbet utilisé*\n\n🆔 \`${userId}\`\n📅 Premium jusqu'au ${expiresAt.toLocaleDateString('fr-FR')}\n📱 Via : Mini App`;
+      for (const adminId of ADMIN_IDS) {
+        bot.telegram.sendMessage(adminId, notifMsg2, { parse_mode: 'Markdown' }).catch(() => {});
+      }
+      res.end(JSON.stringify({ ok: true, extended: false, expiresAt: expiresAt.toISOString() }));
+    } else if (urlObj.pathname === '/api/profil') {
+      const userId = urlObj.searchParams.get('userId');
+      const prem = userId ? premiumUsers[userId] : null;
+      if (prem) {
+        res.end(JSON.stringify({ ok: true, isPremium: true, plan: prem.plan || 'mensuel', expiresAt: prem.expiresAt }));
+      } else {
+        res.end(JSON.stringify({ ok: true, isPremium: false }));
+      }
     } else {
       res.writeHead(404);
       res.end(JSON.stringify({ ok: false, error: 'Route inconnue' }));
