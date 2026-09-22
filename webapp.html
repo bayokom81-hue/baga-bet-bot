@@ -181,6 +181,20 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI'
 .team-logo-placeholder{width:40px;height:40px;border-radius:50%;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;margin:0 auto 6px}
 .team-name{font-size:11px;font-weight:600;line-height:1.3}
 .back-btn{display:flex;align-items:center;gap:6px;background:none;border:none;color:var(--accent);font-size:13px;font-weight:600;padding:0 0 12px;cursor:pointer}
+.league-tab-btn{flex:1;padding:8px;background:var(--card);border:1px solid var(--border);border-radius:var(--r);color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;transition:all .2s}
+.league-tab-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.match-date-header{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;padding:10px 0 6px;border-bottom:1px solid var(--border);margin-bottom:8px}
+.league-match-card{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:10px;margin-bottom:8px}
+.lm-team{display:flex;flex-direction:column;align-items:center;flex:1;gap:4px;cursor:pointer}
+.lm-team.right{flex-direction:column}
+.lm-logo{width:32px;height:32px;object-fit:contain}
+.lm-logo-ph{width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px}
+.lm-name{font-size:10px;font-weight:600;text-align:center;line-height:1.2;max-width:70px}
+.lm-score{display:flex;flex-direction:column;align-items:center;min-width:54px}
+.lm-ft{font-size:18px;font-weight:900;color:var(--text)}
+.lm-live{font-size:18px;font-weight:900;color:var(--danger)}
+.lm-time{font-size:16px;font-weight:700;color:var(--accent)}
+.lm-status{font-size:10px;color:var(--muted);margin-top:2px}
 
 /* ── Profil ── */
 .profile-hero{background:linear-gradient(135deg,#0d1a0d,#0d150d);border:1px solid var(--border);border-radius:var(--r);padding:20px;margin-bottom:12px;text-align:center}
@@ -860,7 +874,8 @@ async function loadProfil() {
 const LEAGUE_COUNTRIES = {
   '4328': 'Angleterre', '4335': 'Espagne', '4331': 'Allemagne',
   '4332': 'Italie', '4334': 'France', '4480': 'Europe',
-  '4337': 'Pays-Bas', '4344': 'Portugal',
+  '4337': 'Pays-Bas', '4344': 'Portugal', '4481': 'Europe',
+  '4607': 'International', '4882': 'Europe', '4644': 'Afrique', '4399': 'International',
 };
 
 async function loadLigues() {
@@ -871,41 +886,98 @@ async function loadLigues() {
     const d = await r.json();
     el.id = 'ligues-loaded';
     if (!d.ok || !d.leagues?.length) { el.innerHTML = '<div class="empty-state">Aucune ligue disponible</div>'; return; }
-    el.innerHTML = d.leagues.map(l => `
-      <div class="league-card" onclick="loadLeagueTeams('${l.id}','${l.name}')">
-        ${l.logo ? `<img class="league-logo" src="${l.logo}" onerror="this.style.display='none'">` : `<div class="league-logo-placeholder">🏆</div>`}
-        <div class="league-info">
-          <div class="league-name">${l.name}</div>
-          <div class="league-country">${LEAGUE_COUNTRIES[l.id] || ''}</div>
-        </div>
-        <span class="league-chevron">›</span>
-      </div>`).join('');
+    const groups = { international: [], cup: [], club: [] };
+    d.leagues.forEach(l => { (groups[l.type] || groups.club).push(l); });
+    const renderGroup = (title, icon, leagues) => leagues.length === 0 ? '' : `
+      <div class="section-title" style="margin-top:12px;margin-bottom:8px">${icon} ${title}</div>
+      ${leagues.map(l => `
+        <div class="league-card" onclick="loadLeagueDetail('${l.id}','${l.name.replace(/'/g,"\\'")}')">
+          ${l.logo ? `<img class="league-logo" src="${l.logo}" onerror="this.style.display='none'">` : `<div class="league-logo-placeholder">🏆</div>`}
+          <div class="league-info">
+            <div class="league-name">${l.name}</div>
+            <div class="league-country">${LEAGUE_COUNTRIES[l.id] || ''}</div>
+          </div>
+          <span class="league-chevron">›</span>
+        </div>`).join('')}`;
+    el.innerHTML =
+      renderGroup('International / FIFA', '🌍', groups.international) +
+      renderGroup('Coupes européennes', '🏆', groups.cup) +
+      renderGroup('Championnats', '⚽', groups.club);
   } catch(e) {
     el.innerHTML = '<div class="empty-state">Erreur de chargement</div>';
   }
 }
 
-async function loadLeagueTeams(leagueId, leagueName) {
+async function loadLeagueDetail(leagueId, leagueName) {
   const el = document.getElementById('ligues-loaded') || document.getElementById('ligues-content');
   el.innerHTML = `
-    <button class="back-btn" onclick="loadLigues()">‹ Retour aux ligues</button>
+    <button class="back-btn" onclick="loadLigues()">‹ Retour</button>
     <div class="section-title" style="margin-bottom:10px">${leagueName}</div>
-    <div class="loader"><div class="spinner"></div>Chargement des équipes...</div>`;
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button id="tab-matchs-btn" class="league-tab-btn active" onclick="switchLeagueTab('matchs','${leagueId}','${leagueName.replace(/'/g,"\\'")}')">📅 Matchs</button>
+      <button id="tab-equipes-btn" class="league-tab-btn" onclick="switchLeagueTab('equipes','${leagueId}','${leagueName.replace(/'/g,"\\'")}')">👥 Équipes</button>
+    </div>
+    <div id="league-tab-content"><div class="loader"><div class="spinner"></div>Chargement...</div></div>`;
+  await loadLeagueMatchesTab(leagueId, leagueName);
+}
+
+function switchLeagueTab(tab, leagueId, leagueName) {
+  document.getElementById('tab-matchs-btn')?.classList.toggle('active', tab === 'matchs');
+  document.getElementById('tab-equipes-btn')?.classList.toggle('active', tab === 'equipes');
+  if (tab === 'matchs') loadLeagueMatchesTab(leagueId, leagueName);
+  else loadLeagueTeamsTab(leagueId, leagueName);
+}
+
+async function loadLeagueMatchesTab(leagueId, leagueName) {
+  const el = document.getElementById('league-tab-content');
+  if (!el) return;
+  el.innerHTML = `<div class="loader"><div class="spinner"></div>Chargement des matchs...</div>`;
+  try {
+    const r = await fetch(`${BASE}/api/league-matches?id=${leagueId}`);
+    const d = await r.json();
+    if (!d.ok || !d.matches?.length) { el.innerHTML = '<div class="empty-state">Aucun match à venir</div>'; return; }
+    // Grouper par date
+    const byDate = {};
+    d.matches.forEach(m => { (byDate[m.date] = byDate[m.date] || []).push(m); });
+    el.innerHTML = Object.entries(byDate).map(([date, matches]) => `
+      <div class="match-date-header">${formatDate(date)}</div>
+      ${matches.map(m => `
+        <div class="league-match-card">
+          <div class="lm-team" onclick="analyseFromLeague('${m.home.replace(/'/g,"\\'")}','${leagueId}','${leagueName.replace(/'/g,"\\'")}')">
+            ${m.homeLogo ? `<img class="lm-logo" src="${m.homeLogo}" onerror="this.style.display='none'">` : `<div class="lm-logo-ph">⚽</div>`}
+            <span class="lm-name">${m.home}</span>
+          </div>
+          <div class="lm-score">
+            ${m.status === 'FT' ? `<span class="lm-ft">${m.scoreHome}-${m.scoreAway}</span>` :
+              m.status === 'LIVE' ? `<span class="lm-live">${m.scoreHome}-${m.scoreAway}</span>` :
+              `<span class="lm-time">${m.time || '--:--'}</span>`}
+            <span class="lm-status">${m.status === 'FT' ? 'Terminé' : m.status === 'LIVE' ? '🔴 Live' : m.status === 'NS' ? 'À venir' : m.status}</span>
+          </div>
+          <div class="lm-team right" onclick="analyseFromLeague('${m.away.replace(/'/g,"\\'")}','${leagueId}','${leagueName.replace(/'/g,"\\'")}')">
+            ${m.awayLogo ? `<img class="lm-logo" src="${m.awayLogo}" onerror="this.style.display='none'">` : `<div class="lm-logo-ph">⚽</div>`}
+            <span class="lm-name">${m.away}</span>
+          </div>
+        </div>`).join('')}`).join('');
+  } catch(e) {
+    el.innerHTML = '<div class="empty-state">Erreur de chargement</div>';
+  }
+}
+
+async function loadLeagueTeamsTab(leagueId, leagueName) {
+  const el = document.getElementById('league-tab-content');
+  if (!el) return;
+  el.innerHTML = `<div class="loader"><div class="spinner"></div>Chargement des équipes...</div>`;
   try {
     const r = await fetch(`${BASE}/api/ligues?id=${leagueId}`);
     const d = await r.json();
-    if (!d.ok || !d.teams?.length) { el.innerHTML += '<div class="empty-state">Aucune équipe trouvée</div>'; return; }
-    const grid = document.createElement('div');
-    grid.className = 'team-grid';
-    grid.innerHTML = d.teams.map(t => `
+    if (!d.ok || !d.teams?.length) { el.innerHTML = '<div class="empty-state">Aucune équipe trouvée</div>'; return; }
+    el.innerHTML = `<div class="team-grid">${d.teams.map(t => `
       <div class="team-card" onclick="analyseFromLeague('${t.name.replace(/'/g,"\\'")}','${leagueId}','${leagueName.replace(/'/g,"\\'")}')">
-        ${t.logo ? `<img class="team-logo" src="${t.logo}" onerror="this.parentNode.querySelector('.team-logo').style.display='none'">` : `<div class="team-logo-placeholder">⚽</div>`}
+        ${t.logo ? `<img class="team-logo" src="${t.logo}" onerror="this.style.display='none'">` : `<div class="team-logo-placeholder">⚽</div>`}
         <div class="team-name">${t.name}</div>
-      </div>`).join('');
-    el.querySelector('.loader')?.remove();
-    el.appendChild(grid);
+      </div>`).join('')}</div>`;
   } catch(e) {
-    el.innerHTML += '<div class="empty-state">Erreur de chargement</div>';
+    el.innerHTML = '<div class="empty-state">Erreur de chargement</div>';
   }
 }
 
@@ -921,11 +993,19 @@ function analyseFromLeague(teamName, leagueId, leagueName) {
 
 function backToLeague() {
   if (_fromLeague) {
-    loadLeagueTeams(_fromLeague.leagueId, _fromLeague.leagueName);
+    loadLeagueDetail(_fromLeague.leagueId, _fromLeague.leagueName);
     showPage('ligues');
   } else {
     showPage('ligues');
   }
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  } catch { return dateStr; }
 }
 
 // ── Admin ─────────────────────────────────────────────────────────

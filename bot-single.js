@@ -113,14 +113,22 @@ async function tsdb(endpoint) {
 
 // IDs des ligues TheSportsDB
 const TSDB_LEAGUES = [
-  { id: '4328', name: 'Premier League',     searchName: 'English Premier League', logo: 'https://www.thesportsdb.com/images/media/league/badge/i6o0kh1549879062.png' },
-  { id: '4335', name: 'La Liga',            searchName: 'Spanish La Liga',        logo: 'https://www.thesportsdb.com/images/media/league/badge/7onmyv1534768460.png' },
-  { id: '4331', name: 'Bundesliga',         searchName: 'German Bundesliga',      logo: 'https://www.thesportsdb.com/images/media/league/badge/0j55yv1534764906.png' },
-  { id: '4332', name: 'Serie A',            searchName: 'Italian Serie A',        logo: 'https://www.thesportsdb.com/images/media/league/badge/zkwyk11534768505.png' },
-  { id: '4334', name: 'Ligue 1',            searchName: 'French Ligue 1',         logo: 'https://www.thesportsdb.com/images/media/league/badge/323yvv1534770164.png' },
-  { id: '4480', name: 'Champions League',   searchName: 'UEFA Champions League',  logo: 'https://www.thesportsdb.com/images/media/league/badge/qoYDXl1621338005.png' },
-  { id: '4337', name: 'Eredivisie',         searchName: 'Dutch Eredivisie',       logo: '' },
-  { id: '4344', name: 'Primeira Liga',      searchName: 'Portuguese Primeira Liga',logo: '' },
+  // Championnats nationaux
+  { id: '4328', name: 'Premier League',     searchName: 'English Premier League',   logo: 'https://www.thesportsdb.com/images/media/league/badge/i6o0kh1549879062.png', type: 'club' },
+  { id: '4335', name: 'La Liga',            searchName: 'Spanish La Liga',          logo: 'https://www.thesportsdb.com/images/media/league/badge/7onmyv1534768460.png', type: 'club' },
+  { id: '4331', name: 'Bundesliga',         searchName: 'German Bundesliga',        logo: 'https://www.thesportsdb.com/images/media/league/badge/0j55yv1534764906.png', type: 'club' },
+  { id: '4332', name: 'Serie A',            searchName: 'Italian Serie A',          logo: 'https://www.thesportsdb.com/images/media/league/badge/zkwyk11534768505.png', type: 'club' },
+  { id: '4334', name: 'Ligue 1',            searchName: 'French Ligue 1',           logo: 'https://www.thesportsdb.com/images/media/league/badge/323yvv1534770164.png', type: 'club' },
+  { id: '4337', name: 'Eredivisie',         searchName: 'Dutch Eredivisie',         logo: '', type: 'club' },
+  { id: '4344', name: 'Primeira Liga',      searchName: 'Portuguese Primeira Liga', logo: '', type: 'club' },
+  // Coupes européennes
+  { id: '4480', name: 'Champions League',   searchName: 'UEFA Champions League',    logo: 'https://www.thesportsdb.com/images/media/league/badge/qoYDXl1621338005.png', type: 'cup' },
+  { id: '4481', name: 'Europa League',      searchName: 'UEFA Europa League',       logo: 'https://www.thesportsdb.com/images/media/league/badge/ehj7ky1549878838.png', type: 'cup' },
+  // International / FIFA
+  { id: '4607', name: 'Coupe du Monde',     searchName: 'FIFA World Cup',           logo: 'https://www.thesportsdb.com/images/media/league/badge/wydq891574689296.png', type: 'international' },
+  { id: '4882', name: 'Nations League',     searchName: 'UEFA Nations League',      logo: 'https://www.thesportsdb.com/images/media/league/badge/qe4bj61607527553.png', type: 'international' },
+  { id: '4644', name: 'CAN',               searchName: 'African Cup of Nations',   logo: 'https://www.thesportsdb.com/images/media/league/badge/3quvml1597419732.png', type: 'international' },
+  { id: '4399', name: 'Qualif. Monde UEFA', searchName: 'UEFA World Cup Qualifying', logo: '', type: 'international' },
 ];
 
 // Cache des matchs
@@ -1196,6 +1204,13 @@ async function handleApi(req, res, urlObj) {
         bot.telegram.sendMessage(adminId, notifMsg2, { parse_mode: 'Markdown' }).catch(() => {});
       }
       res.end(JSON.stringify({ ok: true, extended, expiresAt: finalExp.toISOString() }));
+    } else if (urlObj.pathname === '/api/league-matches') {
+      const leagueId = urlObj.searchParams.get('id');
+      if (!leagueId) { res.end(JSON.stringify({ ok: false, error: 'id requis' })); return; }
+      const league = TSDB_LEAGUES.find(l => l.id === leagueId);
+      const data = await tsdb(`eventsnextleague.php?id=${leagueId}`);
+      const events = (data?.events || []).slice(0, 20).map(m => tsdbMatchToNorm(m, league));
+      res.end(JSON.stringify({ ok: true, matches: events, league: league || { id: leagueId, name: leagueId } }));
     } else if (urlObj.pathname === '/api/ligues') {
       const leagueId = urlObj.searchParams.get('id');
       if (leagueId) {
