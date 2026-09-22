@@ -405,7 +405,7 @@ function showPage(name) {
   document.getElementById('page-' + name).classList.add('active');
   document.getElementById('nav-' + name).classList.add('active');
   if (name === 'matchs' && !matchTabLoaded.today) loadMatchs();
-  if (name === 'ligues' && !document.getElementById('ligues-loaded')) loadLigues();
+  if (name === 'ligues' && !document.getElementById('ligues-content').dataset.loaded) loadLigues();
   if (name === 'favoris') loadFavoris();
   if (name === 'coupon' && !document.getElementById('coupon-loaded')) loadCoupon();
   if (name === 'profil') loadProfil();
@@ -884,7 +884,7 @@ async function loadLigues() {
   try {
     const r = await fetch(BASE + '/api/ligues');
     const d = await r.json();
-    el.id = 'ligues-loaded';
+    el.dataset.loaded = '1';
     if (!d.ok || !d.leagues?.length) { el.innerHTML = '<div class="empty-state">Aucune ligue disponible</div>'; return; }
     const groups = { international: [], cup: [], club: [] };
     d.leagues.forEach(l => { (groups[l.type] || groups.club).push(l); });
@@ -909,7 +909,7 @@ async function loadLigues() {
 }
 
 async function loadLeagueDetail(leagueId, leagueName) {
-  const el = document.getElementById('ligues-loaded') || document.getElementById('ligues-content');
+  const el = document.getElementById('ligues-content');
   el.innerHTML = `
     <button class="back-btn" onclick="loadLigues()">‹ Retour</button>
     <div class="section-title" style="margin-bottom:10px">${leagueName}</div>
