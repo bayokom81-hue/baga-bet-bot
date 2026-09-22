@@ -101,14 +101,20 @@ if (!BOT_TOKEN) { console.error('BOT_TOKEN manquant'); process.exit(1); }
 // ── API TheSportsDB (gratuit, sans clé) ──────────────────────────
 const TSDB = 'https://www.thesportsdb.com/api/v1/json/3';
 
-async function tsdb(endpoint) {
-  try {
-    const r = await axios.get(`${TSDB}/${endpoint}`, { timeout: 12000 });
-    return r.data;
-  } catch(e) {
-    console.error(`TSDB [${endpoint}]: ${e.message}`);
-    return null;
+async function tsdb(endpoint, { retries = 3, delay = 800 } = {}) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const r = await axios.get(`${TSDB}/${endpoint}`, { timeout: 12000 });
+      if (r.data && Object.keys(r.data).length > 0) return r.data;
+      // Réponse vide → retry
+      if (i < retries - 1) await new Promise(res => setTimeout(res, delay * (i + 1)));
+    } catch(e) {
+      console.error(`TSDB [${endpoint}] tentative ${i+1}/${retries}: ${e.message}`);
+      if (i < retries - 1) await new Promise(res => setTimeout(res, delay * (i + 1)));
+    }
   }
+  console.error(`TSDB [${endpoint}]: echec apres ${retries} tentatives`);
+  return null;
 }
 
 // IDs des ligues TheSportsDB
@@ -1208,9 +1214,23 @@ async function handleApi(req, res, urlObj) {
       const leagueId = urlObj.searchParams.get('id');
       if (!leagueId) { res.end(JSON.stringify({ ok: false, error: 'id requis' })); return; }
       const league = TSDB_LEAGUES.find(l => l.id === leagueId);
-      const data = await tsdb(`eventsnextleague.php?id=${leagueId}`);
-      const events = (data?.events || []).slice(0, 20).map(m => tsdbMatchToNorm(m, league));
-      res.end(JSON.stringify({ ok: true, matches: events, league: league || { id: leagueId, name: leagueId } }));
+      const todayStr = new Date().toISOString().slice(0, 10);
+      // Double source : prochains matchs + matchs du jour en parallèle
+      const [nextData, todayData] = await Promise.all([
+        tsdb(`eventsnextleague.php?id=${leagueId}`),
+        tsdb(`eventsday.php?d=${todayStr}&l=${encodeURIComponent(league?.searchName || leagueId)}`),
+      ]);
+      const seen = new Set();
+      const allEvents = [];
+      for (const m of [...(nextData?.events || []), ...(todayData?.events || [])]) {
+        const key = `${m.strHomeTeam}|${m.strAwayTeam}|${m.dateEvent}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const norm = tsdbMatchToNorm(m, league);
+        if (norm) allEvents.push(norm);
+      }
+      allEvents.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+      res.end(JSON.stringify({ ok: true, matches: allEvents.slice(0, 30), league: league || { id: leagueId, name: leagueId } }));
     } else if (urlObj.pathname === '/api/ligues') {
       const leagueId = urlObj.searchParams.get('id');
       if (leagueId) {
