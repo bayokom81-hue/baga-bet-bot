@@ -130,11 +130,7 @@ const TSDB_LEAGUES = [
   // Coupes européennes
   { id: '4480', name: 'Champions League',   searchName: 'UEFA Champions League',    logo: 'https://www.thesportsdb.com/images/media/league/badge/qoYDXl1621338005.png', type: 'cup' },
   { id: '4481', name: 'Europa League',      searchName: 'UEFA Europa League',       logo: 'https://www.thesportsdb.com/images/media/league/badge/ehj7ky1549878838.png', type: 'cup' },
-  // International / FIFA
-  { id: '4607', name: 'Coupe du Monde',     searchName: 'FIFA World Cup',           logo: 'https://www.thesportsdb.com/images/media/league/badge/wydq891574689296.png', type: 'international' },
-  { id: '4882', name: 'Nations League',     searchName: 'UEFA Nations League',      logo: 'https://www.thesportsdb.com/images/media/league/badge/qe4bj61607527553.png', type: 'international' },
-  { id: '4644', name: 'CAN',               searchName: 'African Cup of Nations',   logo: 'https://www.thesportsdb.com/images/media/league/badge/3quvml1597419732.png', type: 'international' },
-  { id: '4399', name: 'Qualif. Monde UEFA', searchName: 'UEFA World Cup Qualifying', logo: '', type: 'international' },
+  { id: '5071', name: 'Conference League',  searchName: 'UEFA Conference League',   logo: 'https://www.thesportsdb.com/images/media/league/badge/287b9k1610287851.png', type: 'cup' },
 ];
 
 // Cache des matchs

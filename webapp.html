@@ -874,8 +874,7 @@ async function loadProfil() {
 const LEAGUE_COUNTRIES = {
   '4328': 'Angleterre', '4335': 'Espagne', '4331': 'Allemagne',
   '4332': 'Italie', '4334': 'France', '4480': 'Europe',
-  '4337': 'Pays-Bas', '4344': 'Portugal', '4481': 'Europe',
-  '4607': 'International', '4882': 'Europe', '4644': 'Afrique', '4399': 'International',
+  '4337': 'Pays-Bas', '4344': 'Portugal', '4481': 'Europe', '5071': 'Europe',
 };
 
 async function loadLigues() {
@@ -900,7 +899,6 @@ async function loadLigues() {
           <span class="league-chevron">›</span>
         </div>`).join('')}`;
     el.innerHTML =
-      renderGroup('International / FIFA', '🌍', groups.international) +
       renderGroup('Coupes européennes', '🏆', groups.cup) +
       renderGroup('Championnats', '⚽', groups.club);
   } catch(e) {
