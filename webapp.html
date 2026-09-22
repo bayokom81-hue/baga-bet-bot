@@ -949,7 +949,7 @@ async function loadLeagueMatchesTab(leagueId, leagueName) {
             ${m.status === 'FT' ? `<span class="lm-ft">${m.scoreHome}-${m.scoreAway}</span>` :
               m.status === 'LIVE' ? `<span class="lm-live">${m.scoreHome}-${m.scoreAway}</span>` :
               `<span class="lm-time">${m.time || '--:--'}</span>`}
-            <span class="lm-status">${m.status === 'FT' ? 'Terminé' : m.status === 'LIVE' ? '🔴 Live' : m.status === 'NS' ? 'À venir' : m.status}</span>
+            <span class="lm-status">${m.status === 'FT' || m.status === 'Match Finished' ? 'Terminé' : m.status === 'LIVE' || ['1H','2H','HT','ET','PEN'].includes(m.status) ? '🔴 Live' : ['NS','SCHEDULED','TIMED'].includes(m.status) ? 'À venir' : m.status}</span>
           </div>
           <div class="lm-team right" onclick="analyseFromLeague('${m.away.replace(/'/g,"\\'")}','${leagueId}','${leagueName.replace(/'/g,"\\'")}')">
             ${m.awayLogo ? `<img class="lm-logo" src="${m.awayLogo}" onerror="this.style.display='none'">` : `<div class="lm-logo-ph">⚽</div>`}
