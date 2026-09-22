@@ -195,6 +195,21 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI'
 .lm-live{font-size:18px;font-weight:900;color:var(--danger)}
 .lm-time{font-size:16px;font-weight:700;color:var(--accent)}
 .lm-status{font-size:10px;color:var(--muted);margin-top:2px}
+.match-vs-header{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:14px 10px;margin-bottom:12px}
+.mvs-team{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px}
+.mvs-logo{width:48px;height:48px;object-fit:contain}
+.mvs-logo-ph{width:48px;height:48px;display:flex;align-items:center;justify-content:center;font-size:24px}
+.mvs-name{font-size:11px;font-weight:700;text-align:center;line-height:1.3}
+.mvs-center{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:50px}
+.mvs-vs{font-size:18px;font-weight:900;color:var(--accent)}
+.mvs-date{font-size:9px;color:var(--muted);text-align:center;line-height:1.4}
+.match-stat-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)}
+.match-stat-row:last-child{border-bottom:none}
+.msr-label{font-size:12px;font-weight:600;color:var(--muted);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.match-stat-compare{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)}
+.match-stat-compare:last-child{border-bottom:none}
+.msc-val{font-size:18px;font-weight:900;width:40px;text-align:center}
+.msc-lbl{font-size:11px;color:var(--muted);text-align:center;flex:1}
 
 /* ── Profil ── */
 .profile-hero{background:linear-gradient(135deg,#0d1a0d,#0d150d);border:1px solid var(--border);border-radius:var(--r);padding:20px;margin-bottom:12px;text-align:center}
@@ -257,6 +272,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI'
 <div id="page-ligues" class="page">
   <div class="section-title">🏆 Championnats</div>
   <div id="ligues-content"></div>
+</div>
+
+<div id="page-match" class="page">
+  <button class="back-btn" id="match-back-btn" onclick="backToLeague()">‹ Retour</button>
+  <div id="match-content"></div>
 </div>
 
 <div id="page-analyse" class="page">
@@ -397,13 +417,13 @@ let myFavorites = JSON.parse(localStorage.getItem('bb_favorites') || '[]');
 let currentTeam = null;
 let profileData = null;
 
-function showPage(name) {
+function showPage(name, navHighlight) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  // Cacher le bouton retour si on navigue manuellement vers analyse
   if (name === 'analyse') { const bb = document.getElementById('analyse-back-btn'); if(bb) bb.style.display='none'; }
   document.getElementById('page-' + name).classList.add('active');
-  document.getElementById('nav-' + name).classList.add('active');
+  const navEl = document.getElementById('nav-' + (navHighlight || name));
+  if (navEl) navEl.classList.add('active');
   if (name === 'matchs' && !matchTabLoaded.today) loadMatchs();
   if (name === 'ligues' && !document.getElementById('ligues-content').dataset.loaded) loadLigues();
   if (name === 'favoris') loadFavoris();
@@ -940,18 +960,18 @@ async function loadLeagueMatchesTab(leagueId, leagueName) {
     el.innerHTML = Object.entries(byDate).map(([date, matches]) => `
       <div class="match-date-header">${formatDate(date)}</div>
       ${matches.map(m => `
-        <div class="league-match-card">
-          <div class="lm-team" onclick="analyseFromLeague('${m.home.replace(/'/g,"\\'")}','${leagueId}','${leagueName.replace(/'/g,"\\'")}')">
+        <div class="league-match-card" onclick="analyseMatch('${m.home.replace(/'/g,"\\'")}','${m.homeLogo||''}','${m.away.replace(/'/g,"\\'")}','${m.awayLogo||''}','${leagueId}','${leagueName.replace(/'/g,"\\'")}','${m.date||''}','${m.time||''}')">
+          <div class="lm-team">
             ${m.homeLogo ? `<img class="lm-logo" src="${m.homeLogo}" onerror="this.style.display='none'">` : `<div class="lm-logo-ph">⚽</div>`}
             <span class="lm-name">${m.home}</span>
           </div>
           <div class="lm-score">
-            ${m.status === 'FT' ? `<span class="lm-ft">${m.scoreHome}-${m.scoreAway}</span>` :
-              m.status === 'LIVE' ? `<span class="lm-live">${m.scoreHome}-${m.scoreAway}</span>` :
+            ${m.status === 'FT' || m.status === 'Match Finished' ? `<span class="lm-ft">${m.scoreHome}-${m.scoreAway}</span>` :
+              (m.status === 'LIVE' || ['1H','2H','HT','ET','PEN'].includes(m.status)) ? `<span class="lm-live">${m.scoreHome}-${m.scoreAway}</span>` :
               `<span class="lm-time">${m.time || '--:--'}</span>`}
-            <span class="lm-status">${m.status === 'FT' || m.status === 'Match Finished' ? 'Terminé' : m.status === 'LIVE' || ['1H','2H','HT','ET','PEN'].includes(m.status) ? '🔴 Live' : ['NS','SCHEDULED','TIMED'].includes(m.status) ? 'À venir' : m.status}</span>
+            <span class="lm-status">${m.status === 'FT' || m.status === 'Match Finished' ? 'Terminé' : (m.status === 'LIVE' || ['1H','2H','HT','ET','PEN'].includes(m.status)) ? '🔴 Live' : ['NS','SCHEDULED','TIMED'].includes(m.status) ? 'À venir' : m.status}</span>
           </div>
-          <div class="lm-team right" onclick="analyseFromLeague('${m.away.replace(/'/g,"\\'")}','${leagueId}','${leagueName.replace(/'/g,"\\'")}')">
+          <div class="lm-team">
             ${m.awayLogo ? `<img class="lm-logo" src="${m.awayLogo}" onerror="this.style.display='none'">` : `<div class="lm-logo-ph">⚽</div>`}
             <span class="lm-name">${m.away}</span>
           </div>
@@ -980,6 +1000,109 @@ async function loadLeagueTeamsTab(leagueId, leagueName) {
 }
 
 let _fromLeague = null;
+
+async function analyseMatch(home, homeLogo, away, awayLogo, leagueId, leagueName, date, time) {
+  _fromLeague = { leagueId, leagueName };
+  showPage('match', 'ligues');
+  const el = document.getElementById('match-content');
+  el.innerHTML = `
+    <div class="match-vs-header">
+      <div class="mvs-team">
+        ${homeLogo ? `<img class="mvs-logo" src="${homeLogo}" onerror="this.style.display='none'">` : '<div class="mvs-logo-ph">⚽</div>'}
+        <div class="mvs-name">${home}</div>
+      </div>
+      <div class="mvs-center">
+        <div class="mvs-vs">VS</div>
+        ${date ? `<div class="mvs-date">${formatDate(date)}${time ? ' · ' + time : ''}</div>` : ''}
+      </div>
+      <div class="mvs-team">
+        ${awayLogo ? `<img class="mvs-logo" src="${awayLogo}" onerror="this.style.display='none'">` : '<div class="mvs-logo-ph">⚽</div>'}
+        <div class="mvs-name">${away}</div>
+      </div>
+    </div>
+    <div class="loader"><div class="spinner"></div>Analyse en cours...</div>`;
+  try {
+    const r = await fetch(`${BASE}/api/match-analyse?home=${encodeURIComponent(home)}&away=${encodeURIComponent(away)}&userId=${userId}`);
+    const d = await r.json();
+    if (!d.ok) { el.querySelector('.loader').outerHTML = `<div class="empty-state">${d.error}</div>`; return; }
+    renderMatchAnalyse(el, d, home, homeLogo, away, awayLogo, date, time);
+  } catch(e) {
+    el.querySelector('.loader')?.remove();
+    el.innerHTML += '<div class="empty-state">Erreur de chargement</div>';
+  }
+}
+
+function renderMatchAnalyse(el, d, home, homeLogo, away, awayLogo, date, time) {
+  const formEmoji = f => (f||[]).map(r => r==='W'?'✅':r==='D'?'🟡':'❌').join(' ') || 'N/A';
+  const pct = d.prediction?.pct || {};
+  const topResult = pct.home >= pct.away && pct.home >= pct.draw
+    ? `Victoire ${home}` : pct.away >= pct.home && pct.away >= pct.draw
+    ? `Victoire ${away}` : 'Match nul';
+
+  el.innerHTML = `
+    <div class="match-vs-header">
+      <div class="mvs-team">
+        ${homeLogo ? `<img class="mvs-logo" src="${homeLogo}" onerror="this.style.display='none'">` : '<div class="mvs-logo-ph">⚽</div>'}
+        <div class="mvs-name">${home}</div>
+      </div>
+      <div class="mvs-center">
+        <div class="mvs-vs">VS</div>
+        ${date ? `<div class="mvs-date">${formatDate(date)}${time ? ' · ' + time : ''}</div>` : ''}
+      </div>
+      <div class="mvs-team">
+        ${awayLogo ? `<img class="mvs-logo" src="${awayLogo}" onerror="this.style.display='none'">` : '<div class="mvs-logo-ph">⚽</div>'}
+        <div class="mvs-name">${away}</div>
+      </div>
+    </div>
+
+    <!-- Forme -->
+    <div class="card">
+      <div class="card-title">📊 Forme récente</div>
+      <div class="match-stat-row"><span class="msr-label">${home}</span><span>${formEmoji(d.home?.form)}</span></div>
+      <div class="match-stat-row"><span class="msr-label">${away}</span><span>${formEmoji(d.away?.form)}</span></div>
+    </div>
+
+    <!-- Stats comparées -->
+    <div class="card">
+      <div class="card-title">⚽ Buts / match (5 derniers)</div>
+      <div class="match-stat-compare">
+        <div class="msc-val">${d.home?.goalsFor}</div>
+        <div class="msc-lbl">Marqués</div>
+        <div class="msc-val">${d.away?.goalsFor}</div>
+      </div>
+      <div class="match-stat-compare">
+        <div class="msc-val">${d.home?.goalsAgainst}</div>
+        <div class="msc-lbl">Encaissés</div>
+        <div class="msc-val">${d.away?.goalsAgainst}</div>
+      </div>
+    </div>
+
+    <!-- Prédiction -->
+    <div class="card" style="background:linear-gradient(135deg,#0a0d1a,#0d1022);border-color:#3b82f655">
+      <div class="card-title" style="color:#60a5fa">🤖 Prédiction IA</div>
+      <div style="display:flex;gap:6px;margin-bottom:14px">
+        <div style="flex:1;text-align:center">
+          <div style="font-size:22px;font-weight:900;color:var(--win)">${pct.home||0}%</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">${home.split(' ')[0]}</div>
+        </div>
+        <div style="flex:1;text-align:center">
+          <div style="font-size:22px;font-weight:900;color:var(--muted)">${pct.draw||0}%</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">Nul</div>
+        </div>
+        <div style="flex:1;text-align:center">
+          <div style="font-size:22px;font-weight:900;color:var(--lose)">${pct.away||0}%</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">${away.split(' ')[0]}</div>
+        </div>
+      </div>
+      <div style="background:#1e3a5f;border-radius:8px;padding:8px 12px;margin-bottom:${d.prediction?.aiText?'10px':'0'};display:flex;align-items:center;gap:8px">
+        <span style="font-size:16px">🎯</span>
+        <span style="font-size:13px;font-weight:700;color:#93c5fd">Pronostic : ${topResult}</span>
+      </div>
+      ${d.prediction?.aiText
+        ? `<div style="font-size:13px;color:var(--muted2);line-height:1.6;border-top:1px solid var(--border);padding-top:10px">${d.prediction.aiText}</div>`
+        : `<div style="font-size:12px;color:var(--muted);text-align:center;padding:4px 0">💎 Analyse IA complète avec Premium</div>`}
+    </div>`;
+}
 
 function analyseFromLeague(teamName, leagueId, leagueName) {
   _fromLeague = { leagueId, leagueName };

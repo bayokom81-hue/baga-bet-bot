@@ -1134,6 +1134,59 @@ async function handleApi(req, res, urlObj) {
         prediction: { pct: predPct, aiText, opponent: pData?.nextMatch ? nextOpp : null },
         ...extra,
       }));
+    } else if (urlObj.pathname === '/api/match-analyse') {
+      const homeTeam = urlObj.searchParams.get('home');
+      const awayTeam = urlObj.searchParams.get('away');
+      const userId   = urlObj.searchParams.get('userId');
+      if (!homeTeam || !awayTeam) return res.end(JSON.stringify({ ok: false, error: 'home et away requis' }));
+      const isPremium = userId ? !!premiumUsers[userId] : false;
+      // Récupérer les stats des 2 équipes en parallèle
+      const [homeData, awayData] = await Promise.all([
+        getTeamAnalysis(homeTeam).catch(() => null),
+        getTeamAnalysis(awayTeam).catch(() => null),
+      ]);
+      if (!homeData) return res.end(JSON.stringify({ ok: false, error: `Équipe "${homeTeam}" introuvable` }));
+      if (!awayData) return res.end(JSON.stringify({ ok: false, error: `Équipe "${awayTeam}" introuvable` }));
+      const mapMatches = (data) => data.lastMatches.slice(0, 5).map(m => {
+        const isHome = m.idHomeTeam === data.team.id;
+        return {
+          opponent: isHome ? m.strAwayTeam : m.strHomeTeam,
+          goalsFor: parseInt(isHome ? m.intHomeScore : m.intAwayScore) || 0,
+          goalsAgainst: parseInt(isHome ? m.intAwayScore : m.intHomeScore) || 0,
+          isHome,
+        };
+      });
+      const predStats = {
+        homeForm: homeData.form, awayForm: awayData.form,
+        homeGoalsFor: homeData.avgFor, homeGoalsAgainst: homeData.avgAga,
+        awayGoalsFor: awayData.avgFor, awayGoalsAgainst: awayData.avgAga,
+        h2h: [], isHome: true,
+        lastMatches: homeData.lastMatches,
+        teamId: homeData.team.id,
+      };
+      const pct = computePredictionScore(predStats);
+      let aiText = null;
+      if (isPremium) {
+        aiText = await generateAIText(homeData.team.name, awayData.team.name, pct, predStats);
+      }
+      res.end(JSON.stringify({
+        ok: true, isPremium,
+        home: {
+          name: homeData.team.name, logo: homeData.team.crest,
+          form: homeData.form, played: homeData.played,
+          wins: homeData.wins, draws: homeData.draws, losses: homeData.losses,
+          goalsFor: homeData.avgFor, goalsAgainst: homeData.avgAga,
+          lastMatches: mapMatches(homeData),
+        },
+        away: {
+          name: awayData.team.name, logo: awayData.team.crest,
+          form: awayData.form, played: awayData.played,
+          wins: awayData.wins, draws: awayData.draws, losses: awayData.losses,
+          goalsFor: awayData.avgFor, goalsAgainst: awayData.avgAga,
+          lastMatches: mapMatches(awayData),
+        },
+        prediction: { pct, aiText },
+      }));
     } else if (urlObj.pathname === '/api/favoris') {
       if (req.method === 'POST') {
         let body = '';
