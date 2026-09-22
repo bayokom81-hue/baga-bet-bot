@@ -412,6 +412,7 @@ const PAYMENT_NAME = 'Mamadou Bayoko';
 
 const tgUser = tg?.initDataUnsafe?.user || null;
 const userId = tgUser?.id || null;
+let userPlan = null; // 'promo_1xbet' | 'mensuel' | 'trimestriel' | 'annuel' | null
 
 let myFavorites = JSON.parse(localStorage.getItem('bb_favorites') || '[]');
 let currentTeam = null;
@@ -756,6 +757,39 @@ function buildCouponHtml(d, showHistoryBtn) {
 
 async function loadCoupon() {
   const el = document.getElementById('coupon-content');
+
+  // Vérifier accès : Premium OU code promo 1xbet utilisé
+  const hasAccess = userPlan !== null; // userPlan est set dès qu'on a un plan premium ou promo
+  if (!hasAccess) {
+    // Essayer de charger le plan si pas encore fait
+    if (userId) {
+      try {
+        const pr = await fetch(BASE + '/api/profil?userId=' + userId);
+        const pd = await pr.json();
+        if (pd.ok && pd.isPremium) { userPlan = pd.plan; }
+      } catch(e) {}
+    }
+    if (!userPlan) {
+      el.innerHTML = `
+        <div style="text-align:center;padding:30px 16px">
+          <div style="font-size:48px;margin-bottom:16px">🔒</div>
+          <div style="font-size:18px;font-weight:800;margin-bottom:8px">Accès réservé</div>
+          <div style="font-size:13px;color:var(--muted2);line-height:1.6;margin-bottom:24px">
+            Le coupon du jour est disponible pour les membres <b style="color:var(--gold)">Premium</b> ou les utilisateurs inscrits sur <b style="color:#a855f7">1xbet</b> avec notre code partenaire.
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <button onclick="showPage('profil')" style="background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;border:none;border-radius:12px;padding:14px;font-size:14px;font-weight:800;cursor:pointer">
+              🎁 S'inscrire sur 1xbet (30j gratuits)
+            </button>
+            <button onclick="showPage('premium')" style="background:linear-gradient(135deg,#b8860b,var(--gold));color:#000;border:none;border-radius:12px;padding:14px;font-size:14px;font-weight:800;cursor:pointer">
+              💎 Passer Premium
+            </button>
+          </div>
+        </div>`;
+      return;
+    }
+  }
+
   try {
     const url = BASE + '/api/coupon' + (userId ? '?userId=' + userId : '');
     const res = await fetch(url);
@@ -818,6 +852,7 @@ async function loadProfil() {
       isAdmin = !!d.isAdmin;
       if (d.ok && d.isPremium) {
         isPremium = true;
+        userPlan = d.plan;
         planLabel = d.plan;
         expiresAt = d.expiresAt;
         const exp = new Date(expiresAt);
