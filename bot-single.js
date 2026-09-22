@@ -399,22 +399,41 @@ function computePredictionScore(stats) {
 
 async function generateAIText(homeTeam, awayTeam, pct, stats) {
   if (!GROQ_API_KEY) return null;
-  const prompt = `Tu es un analyste football expert. Donne une courte analyse de prédiction (4-5 phrases max) pour ce match en français :
+  const formStr = f => (f||[]).length ? f.join(' ') : 'Données insuffisantes';
+  const lastStr = (stats.lastMatches||[]).slice(0,5).map(m => {
+    const isH = m.idHomeTeam !== undefined ? m.idHomeTeam === stats.teamId : m.isHome;
+    const opp = m.strAwayTeam || m.opponent || '?';
+    const sf = m.intHomeScore ?? m.goalsFor ?? '?';
+    const sa = m.intAwayScore ?? m.goalsAgainst ?? '?';
+    return `${isH?'(D)':'(E)'} vs ${opp} ${sf}-${sa}`;
+  }).join(', ') || 'N/A';
+  const lieu = stats.isHome === true ? `à domicile` : stats.isHome === false ? `à l'extérieur` : '';
+  const dateStr = stats.matchDate ? ` le ${stats.matchDate}` : '';
 
-Match : ${homeTeam} vs ${awayTeam}
-Probabilités calculées : Victoire ${homeTeam} ${pct.home}% | Nul ${pct.draw}% | Victoire ${awayTeam} ${pct.away}%
-Forme ${homeTeam} (5 derniers) : ${(stats.homeForm||[]).join(' ')}
-Forme ${awayTeam} (5 derniers) : ${(stats.awayForm||[]).join(' ')}
-Buts/match ${homeTeam} : ${stats.homeGoalsFor} marqués, ${stats.homeGoalsAgainst} encaissés
-Buts/match ${awayTeam} : ${stats.awayGoalsFor} marqués, ${stats.awayGoalsAgainst} encaissés
+  const prompt = `Tu es un analyste football expert. Analyse ce match précis et donne une prédiction en français (5-6 phrases) :
 
-Sois direct, concis et professionnel. Commence par "🔮 Analyse :" et termine par une recommandation claire.`;
+⚽ MATCH : ${homeTeam} vs ${awayTeam}${dateStr}
+📍 ${homeTeam} joue ${lieu}
+
+📊 STATISTIQUES ${homeTeam} (5 derniers matchs) :
+• Forme : ${formStr(stats.homeForm)}
+• Buts marqués/match : ${stats.homeGoalsFor} | Buts encaissés/match : ${stats.homeGoalsAgainst}
+• Derniers résultats : ${lastStr}
+
+📊 STATISTIQUES ${awayTeam} :
+• Forme : ${formStr(stats.awayForm)}
+• Buts marqués/match : ${stats.awayGoalsFor} | Buts encaissés/match : ${stats.awayGoalsAgainst}
+
+🎯 PROBABILITÉS : ${homeTeam} gagne ${pct.home}% | Nul ${pct.draw}% | ${awayTeam} gagne ${pct.away}%
+
+Analyse les forces/faiblesses des DEUX équipes, leur forme respective, l'avantage domicile/extérieur, puis donne un pronostic clair sur ce match.
+Commence par "🔮 Analyse :" et termine par "💡 Recommandation :" suivi d'une mise cible précise.`;
 
   try {
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
       model: 'llama3-8b-8192',
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 250,
+      max_tokens: 400,
       temperature: 0.7,
     }, {
       headers: { Authorization: `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
@@ -1072,12 +1091,20 @@ async function handleApi(req, res, urlObj) {
       }
       // Prédiction IA (règles + LLM si prochain match connu)
       const nextOpp = pData?.nextMatch?.opponent || 'Adversaire inconnu';
+      // Récupérer les stats de l'adversaire pour enrichir la prédiction
+      let oppStats = null;
+      if (isPremium && pData?.nextMatch) {
+        oppStats = await getTeamAnalysis(nextOpp).catch(() => null);
+      }
       const predStats = {
         homeForm: form,
-        awayForm: [],
+        awayForm: oppStats?.form || [],
         homeGoalsFor: avgFor, homeGoalsAgainst: avgAga,
-        awayGoalsFor: 1.2, awayGoalsAgainst: 1.3,
+        awayGoalsFor: oppStats?.avgFor ?? 1.2, awayGoalsAgainst: oppStats?.avgAga ?? 1.3,
         h2h: extra.h2h || [],
+        isHome: pData?.nextMatch?.isHome,
+        matchDate: pData?.nextMatch?.date,
+        lastMatches,
       };
       const predPct = computePredictionScore(predStats);
       let aiText = null;
