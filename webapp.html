@@ -247,7 +247,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI'
 
 <div id="page-analyse" class="page">
   <div id="analyse-back-btn" style="display:none">
-    <button class="back-btn" onclick="showPage('ligues')">‹ Retour aux ligues</button>
+    <button class="back-btn" onclick="backToLeague()">‹ Retour aux ligues</button>
   </div>
   <div class="search-wrap">
     <span class="search-icon">🔍</span>
@@ -898,7 +898,7 @@ async function loadLeagueTeams(leagueId, leagueName) {
     const grid = document.createElement('div');
     grid.className = 'team-grid';
     grid.innerHTML = d.teams.map(t => `
-      <div class="team-card" onclick="analyseFromLeague('${t.name.replace(/'/g,"\\'")}')">
+      <div class="team-card" onclick="analyseFromLeague('${t.name.replace(/'/g,"\\'")}','${leagueId}','${leagueName.replace(/'/g,"\\'")}')">
         ${t.logo ? `<img class="team-logo" src="${t.logo}" onerror="this.parentNode.querySelector('.team-logo').style.display='none'">` : `<div class="team-logo-placeholder">⚽</div>`}
         <div class="team-name">${t.name}</div>
       </div>`).join('');
@@ -909,11 +909,23 @@ async function loadLeagueTeams(leagueId, leagueName) {
   }
 }
 
-function analyseFromLeague(teamName) {
+let _fromLeague = null;
+
+function analyseFromLeague(teamName, leagueId, leagueName) {
+  _fromLeague = { leagueId, leagueName };
   document.getElementById('search-input').value = teamName;
   showPage('analyse');
   document.getElementById('analyse-back-btn').style.display = 'block';
   setTimeout(() => doAnalyse(), 100);
+}
+
+function backToLeague() {
+  if (_fromLeague) {
+    loadLeagueTeams(_fromLeague.leagueId, _fromLeague.leagueName);
+    showPage('ligues');
+  } else {
+    showPage('ligues');
+  }
 }
 
 // ── Admin ─────────────────────────────────────────────────────────
