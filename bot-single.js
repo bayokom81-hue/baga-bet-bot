@@ -67,27 +67,75 @@ const PLANS = {
   annuel:      { label: 'Annuel',      amount: 20000, days: 365 },
 };
 
-// ── Persistance JSON ──────────────────────────────────────────────
+// ── Supabase (persistance) ────────────────────────────────────────
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
+
+async function sbGet(key) {
+  if (!SUPABASE_URL || !SUPABASE_KEY) return null;
+  try {
+    const r = await axios.get(`${SUPABASE_URL}/rest/v1/bot_data?key=eq.${key}&select=value`, {
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` },
+      timeout: 10000,
+    });
+    return r.data?.[0]?.value || null;
+  } catch(e) { console.error(`sbGet(${key}):`, e.message); return null; }
+}
+
+async function sbSet(key, value) {
+  if (!SUPABASE_URL || !SUPABASE_KEY) return;
+  try {
+    await axios.post(`${SUPABASE_URL}/rest/v1/bot_data`,
+      { key, value, updated_at: new Date().toISOString() },
+      { headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates',
+        }, timeout: 10000 });
+  } catch(e) { console.error(`sbSet(${key}):`, e.message); }
+}
+
+// ── Persistance JSON (fallback local) ────────────────────────────
 const DATA_FILE = path.join(__dirname, 'data.json');
-function loadData() {
+
+async function loadData() {
+  if (SUPABASE_URL && SUPABASE_KEY) {
+    try {
+      const [pu, pc, ft] = await Promise.all([sbGet('premiumUsers'), sbGet('promoCodes'), sbGet('favoriteTeams')]);
+      if (pu || pc || ft) {
+        console.log('[Supabase] données chargées');
+        return { premiumUsers: pu || {}, promoCodes: pc || {}, favoriteTeams: ft || {} };
+      }
+    } catch(e) { console.error('loadData Supabase:', e.message); }
+  }
   try {
     if (fs.existsSync(DATA_FILE)) {
       const d = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
       return { premiumUsers: d.premiumUsers || {}, promoCodes: d.promoCodes || {}, favoriteTeams: d.favoriteTeams || {} };
     }
-  } catch(e) { console.error('loadData:', e.message); }
+  } catch(e) { console.error('loadData file:', e.message); }
   return { premiumUsers: {}, promoCodes: {}, favoriteTeams: {} };
 }
+
 function saveData() {
+  // Backup local (peut échouer sur Render, c'est normal)
   try { fs.writeFileSync(DATA_FILE, JSON.stringify({ premiumUsers, promoCodes, favoriteTeams }, null, 2)); }
-  catch(e) { console.error('saveData:', e.message); }
+  catch(e) { /* ephemeral filesystem */ }
+  // Sauvegarde persistante Supabase
+  if (SUPABASE_URL && SUPABASE_KEY) {
+    Promise.all([
+      sbSet('premiumUsers', premiumUsers),
+      sbSet('promoCodes', promoCodes),
+      sbSet('favoriteTeams', favoriteTeams),
+    ]).catch(e => console.error('saveData Supabase:', e.message));
+  }
 }
 
-const _data = loadData();
-const premiumUsers = _data.premiumUsers;
+const premiumUsers = {};
 const PROMO_DAYS = 30;
-const promoCodes = _data.promoCodes;
-const favoriteTeams = _data.favoriteTeams;
+const promoCodes = {};
+const favoriteTeams = {};
 const MAX_FAVORITES_FREE = 3;
 const MAX_FAVORITES_PREMIUM = 10;
 
@@ -1427,15 +1475,24 @@ const server = http.createServer((req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`Serveur HTTP sur port ${PORT}`);
-  if (RENDER_URL) {
-    setInterval(() => {
-      http.get(RENDER_URL).on('error', () => {});
-      console.log('Ping keep-alive envoyé');
-    }, 10 * 60 * 1000);
-  }
-});
+async function startServer() {
+  // Charger les données persistantes avant tout
+  const data = await loadData();
+  Object.assign(premiumUsers, data.premiumUsers);
+  Object.assign(promoCodes, data.promoCodes);
+  Object.assign(favoriteTeams, data.favoriteTeams);
+  console.log(`[init] ${Object.keys(premiumUsers).length} utilisateurs premium chargés`);
+
+  server.listen(PORT, () => {
+    console.log(`Serveur HTTP sur port ${PORT}`);
+    if (RENDER_URL) {
+      setInterval(() => {
+        http.get(RENDER_URL).on('error', () => {});
+        console.log('Ping keep-alive envoyé');
+      }, 10 * 60 * 1000);
+    }
+  });
+}
 
 // ── Alertes matchs favoris ────────────────────────────────────────
 async function sendFavoriteAlerts() {
@@ -1484,15 +1541,16 @@ function scheduleDailyAlerts() {
 }
 
 // Démarrage
-bot.launch().then(() => {
+startServer().then(() => bot.launch()).then(() => {
   console.log(`✅ BetAnalyse BOT démarré - Mode: ${DEMO_MODE ? 'DÉMO' : 'API RÉELLE'}`);
   scheduleDailyAlerts();
-  // Pré-charger les matchs en arrière-plan (pas de blocage)
   if (!DEMO_MODE) {
     setTimeout(() => refreshMatchesCache(), 2000);
-    // Rafraîchir toutes les 2h
     setInterval(() => refreshMatchesCache(), 2 * 60 * 60 * 1000);
   }
+}).catch(e => {
+  console.error('Erreur démarrage:', e.message);
+  process.exit(1);
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
