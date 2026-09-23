@@ -8,7 +8,8 @@ const path = require('path');
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.trim())).filter(Boolean);
-const DEMO_MODE = false; // TheSportsDB est gratuit, pas besoin de clé
+const APISPORTS_KEY = process.env.APISPORTS_KEY || '';
+const DEMO_MODE = false;
 
 // ── Jemenipay ─────────────────────────────────────────────────────
 const JEMENI_API_KEY = process.env.JEMENI_API_KEY || '';
@@ -98,6 +99,44 @@ let todayCouponCache = { date: null, data: null };
 
 if (!BOT_TOKEN) { console.error('BOT_TOKEN manquant'); process.exit(1); }
 
+// ── API-Football (api-sports.io) ─────────────────────────────────
+const APIF_BASE = 'https://v3.football.api-sports.io';
+
+async function apif(endpoint, params = {}) {
+  if (!APISPORTS_KEY) return null;
+  try {
+    const r = await axios.get(`${APIF_BASE}/${endpoint}`, {
+      headers: { 'x-apisports-key': APISPORTS_KEY },
+      params,
+      timeout: 15000,
+    });
+    return r.data;
+  } catch(e) {
+    console.error(`APIF [${endpoint}]: ${e.message}`);
+    return null;
+  }
+}
+
+function apifMatchToNorm(f) {
+  const s = f.fixture?.status?.short || 'NS';
+  const isLive = ['1H','2H','HT','ET','P','BT'].includes(s);
+  const isFinished = ['FT','AET','PEN'].includes(s);
+  return {
+    home: f.teams?.home?.name || '',
+    homeLogo: f.teams?.home?.logo || '',
+    away: f.teams?.away?.name || '',
+    awayLogo: f.teams?.away?.logo || '',
+    scoreHome: isFinished || isLive ? f.goals?.home : null,
+    scoreAway: isFinished || isLive ? f.goals?.away : null,
+    time: f.fixture?.date ? new Date(f.fixture.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Bamako' }) : '--:--',
+    date: f.fixture?.date ? f.fixture.date.split('T')[0] : '',
+    status: isLive ? 'IN_PLAY' : isFinished ? 'FINISHED' : 'SCHEDULED',
+    league: f.league?.name || '',
+    leagueLogo: f.league?.logo || '',
+    country: f.league?.country || '',
+  };
+}
+
 // ── API TheSportsDB (gratuit, sans clé) ──────────────────────────
 const TSDB = 'https://www.thesportsdb.com/api/v1/json/3';
 
@@ -161,7 +200,6 @@ function tsdbMatchToNorm(m, leagueInfo) {
 
 async function refreshMatchesCache() {
   if (matchesCache.loading) {
-    // Attendre la fin du chargement en cours
     while (matchesCache.loading) await new Promise(r => setTimeout(r, 150));
     return;
   }
@@ -170,31 +208,63 @@ async function refreshMatchesCache() {
     const todayStr = new Date().toISOString().split('T')[0];
     const todayAll = [], upcomingAll = [];
 
-    const results = await Promise.all(
-      TSDB_LEAGUES.map(l => tsdb(`eventsnextleague.php?id=${l.id}`).then(d => ({ d, l })))
-    );
-    for (const { d, l } of results) {
-      for (const m of d?.events || []) {
-        const norm = tsdbMatchToNorm(m, l);
+    if (APISPORTS_KEY) {
+      // ── Source principale : API-Football (couverture mondiale) ───
+      const [todayData, nextData] = await Promise.all([
+        apif('fixtures', { date: todayStr }),
+        apif('fixtures', { live: 'all' }),
+      ]);
+      const fixtures = [
+        ...(todayData?.response || []),
+        ...(nextData?.response || []),
+      ];
+      const seen = new Set();
+      for (const f of fixtures) {
+        const key = `${f.teams?.home?.name}|${f.teams?.away?.name}|${f.fixture?.date?.split('T')[0]}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const norm = apifMatchToNorm(f);
         if (norm.date === todayStr) todayAll.push(norm);
-        else if (norm.date > todayStr) upcomingAll.push(norm);
       }
-    }
-    // Aussi les matchs d'aujourd'hui (eventspastleague peut avoir des matchs du jour)
-    const todayResults = await Promise.all(
-      TSDB_LEAGUES.map(l => tsdb(`eventsday.php?d=${todayStr}&l=${encodeURIComponent(l.name)}`).then(d => ({ d, l })))
-    );
-    for (const { d, l } of todayResults) {
-      for (const m of d?.events || []) {
-        const norm = tsdbMatchToNorm(m, l);
-        if (!todayAll.find(x => x.home === norm.home && x.away === norm.away)) {
-          todayAll.push(norm);
+      // Prochains matchs (3 prochains jours)
+      for (let d = 1; d <= 3; d++) {
+        const dt = new Date(); dt.setDate(dt.getDate() + d);
+        const ds = dt.toISOString().split('T')[0];
+        const r = await apif('fixtures', { date: ds });
+        for (const f of r?.response || []) {
+          const norm = apifMatchToNorm(f);
+          if (!upcomingAll.find(x => x.home === norm.home && x.away === norm.away))
+            upcomingAll.push(norm);
         }
       }
+      console.log(`Cache matchs API-Football: ${todayAll.length} aujourd'hui, ${upcomingAll.length} à venir`);
+    } else {
+      // ── Fallback : TheSportsDB ────────────────────────────────────
+      const results = await Promise.all(
+        TSDB_LEAGUES.map(l => tsdb(`eventsnextleague.php?id=${l.id}`).then(d => ({ d, l })))
+      );
+      for (const { d, l } of results) {
+        for (const m of d?.events || []) {
+          const norm = tsdbMatchToNorm(m, l);
+          if (norm.date === todayStr) todayAll.push(norm);
+          else if (norm.date > todayStr) upcomingAll.push(norm);
+        }
+      }
+      const todayResults = await Promise.all(
+        TSDB_LEAGUES.map(l => tsdb(`eventsday.php?d=${todayStr}&l=${encodeURIComponent(l.name)}`).then(d => ({ d, l })))
+      );
+      for (const { d, l } of todayResults) {
+        for (const m of d?.events || []) {
+          const norm = tsdbMatchToNorm(m, l);
+          if (!todayAll.find(x => x.home === norm.home && x.away === norm.away))
+            todayAll.push(norm);
+        }
+      }
+      console.log(`Cache matchs TSDB: ${todayAll.length} aujourd'hui, ${upcomingAll.length} à venir`);
     }
+
     matchesCache.today = { data: todayAll, loadedAt: Date.now(), dateKey: todayStr };
     matchesCache.upcoming = { data: upcomingAll, loadedAt: Date.now(), dateKey: todayStr };
-    console.log(`Cache matchs TSDB: ${todayAll.length} aujourd'hui, ${upcomingAll.length} à venir`);
   } catch(e) {
     console.error('refreshMatchesCache:', e.message);
   } finally {
