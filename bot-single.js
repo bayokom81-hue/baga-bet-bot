@@ -160,7 +160,11 @@ function tsdbMatchToNorm(m, leagueInfo) {
 }
 
 async function refreshMatchesCache() {
-  if (matchesCache.loading) return;
+  if (matchesCache.loading) {
+    // Attendre la fin du chargement en cours
+    while (matchesCache.loading) await new Promise(r => setTimeout(r, 150));
+    return;
+  }
   matchesCache.loading = true;
   try {
     const todayStr = new Date().toISOString().split('T')[0];
@@ -202,7 +206,7 @@ async function getTodayMatches() {
   const today = new Date().toISOString().split('T')[0];
   const ttl = 2 * 60 * 60 * 1000;
   if (matchesCache.today.dateKey === today && Date.now() - matchesCache.today.loadedAt < ttl) return matchesCache.today.data;
-  if (!matchesCache.loading) refreshMatchesCache();
+  await refreshMatchesCache(); // Attendre les données avant de répondre
   return matchesCache.today.data;
 }
 
@@ -210,7 +214,7 @@ async function getUpcomingMatches() {
   const today = new Date().toISOString().split('T')[0];
   const ttl = 2 * 60 * 60 * 1000;
   if (matchesCache.upcoming.dateKey === today && Date.now() - matchesCache.upcoming.loadedAt < ttl) return matchesCache.upcoming.data;
-  if (!matchesCache.loading) refreshMatchesCache();
+  await refreshMatchesCache();
   return matchesCache.upcoming.data;
 }
 
