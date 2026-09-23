@@ -609,9 +609,10 @@ bot.command('favoris', async (ctx) => {
 bot.command('coupon', async (ctx) => {
   const loading = await ctx.reply('🎯 Génération du coupon du jour...');
   try {
-    const matches = await getTodayMatches();
+    let matches = await getTodayMatches();
+    if (!matches?.length) matches = await getUpcomingMatches();
     if (!matches?.length) {
-      return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, '📭 Aucun match aujourd\'hui pour générer un coupon.');
+      return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, '📭 Aucun match disponible pour générer un coupon.');
     }
     const PRIORITY_COMPS = ['Premier League','La Liga','Bundesliga','Serie A','Ligue 1','Champions League'];
     const sorted = [
@@ -1223,7 +1224,9 @@ async function handleApi(req, res, urlObj) {
     } else if (urlObj.pathname === '/api/coupon') {
       const userId = urlObj.searchParams.get('userId');
       const isPremium = userId ? !!premiumUsers[userId] : false;
-      const rawMatches = await getTodayMatches();
+      let rawMatches = await getTodayMatches();
+      // Fallback : si pas de matchs aujourd'hui, prendre les prochains matchs à venir
+      if (!rawMatches?.length) rawMatches = await getUpcomingMatches();
       if (!rawMatches?.length) return res.end(JSON.stringify({ ok: true, matches: [], isPremium }));
       const coupon = generateCoupon(rawMatches, isPremium);
       res.end(JSON.stringify({ ok: true, isPremium, ...coupon }));
