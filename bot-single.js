@@ -226,11 +226,10 @@ async function refreshMatchesCache() {
         const norm = apifMatchToNorm(f);
         if (norm.date === todayStr) todayAll.push(norm);
       }
-      // Prochains matchs (3 prochains jours)
-      for (let d = 1; d <= 3; d++) {
-        const dt = new Date(); dt.setDate(dt.getDate() + d);
-        const ds = dt.toISOString().split('T')[0];
-        const r = await apif('fixtures', { date: ds });
+      // Prochains matchs (2 prochains jours en parallèle)
+      const nextDates = [1, 2].map(d => { const dt = new Date(); dt.setDate(dt.getDate() + d); return dt.toISOString().split('T')[0]; });
+      const nextResults = await Promise.all(nextDates.map(ds => apif('fixtures', { date: ds })));
+      for (const r of nextResults) {
         for (const f of r?.response || []) {
           const norm = apifMatchToNorm(f);
           if (!upcomingAll.find(x => x.home === norm.home && x.away === norm.away))
