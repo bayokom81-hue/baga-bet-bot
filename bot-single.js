@@ -158,7 +158,13 @@ async function apif(endpoint, params = {}) {
       params,
       timeout: 15000,
     });
-    return r.data;
+    const d = r.data;
+    if (d?.errors && Object.keys(d.errors).length > 0) {
+      console.error(`APIF [${endpoint}] errors:`, JSON.stringify(d.errors));
+    } else {
+      console.log(`APIF [${endpoint}] results: ${d?.results ?? 0}`);
+    }
+    return d;
   } catch(e) {
     console.error(`APIF [${endpoint}]: ${e.message}`);
     return null;
