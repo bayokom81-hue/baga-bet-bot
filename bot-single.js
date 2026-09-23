@@ -1541,16 +1541,34 @@ function scheduleDailyAlerts() {
 }
 
 // Démarrage
-startServer().then(() => bot.launch()).then(() => {
+async function launchBot() {
+  for (let i = 0; i < 10; i++) {
+    try {
+      await bot.launch({ dropPendingUpdates: true });
+      return;
+    } catch(e) {
+      if (e.message?.includes('409')) {
+        const wait = (i + 1) * 6000;
+        console.log(`Bot 409 conflict, attente ${wait/1000}s avant retry ${i+1}/10...`);
+        await new Promise(r => setTimeout(r, wait));
+      } else {
+        throw e;
+      }
+    }
+  }
+}
+
+startServer().then(() => {
   console.log(`✅ BetAnalyse BOT démarré - Mode: ${DEMO_MODE ? 'DÉMO' : 'API RÉELLE'}`);
   scheduleDailyAlerts();
   if (!DEMO_MODE) {
     setTimeout(() => refreshMatchesCache(), 2000);
     setInterval(() => refreshMatchesCache(), 2 * 60 * 60 * 1000);
   }
+  return launchBot();
 }).catch(e => {
-  console.error('Erreur démarrage:', e.message);
-  process.exit(1);
+  console.error('Erreur fatale:', e.message);
+  // Ne pas exit() — le serveur HTTP reste actif pour les pings Render
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
