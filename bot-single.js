@@ -151,6 +151,9 @@ const couponHistory = {};
 // Cache coupon du jour (évite de régénérer à chaque appel)
 let todayCouponCache = { date: null, data: null };
 
+// Cache coupon V2 enrichi (probabilités Poisson+Elo)
+let todayCouponV2Cache = { date: null, data: null };
+
 if (!BOT_TOKEN) { console.error('BOT_TOKEN manquant'); process.exit(1); }
 
 // ── API-Football (api-sports.io) ─────────────────────────────────
@@ -748,6 +751,98 @@ function generateCoupon(rawMatches, isPremium) {
   return data;
 }
 
+// ── Coupon V2 : pronostics basés sur Poisson + Elo ────────────────
+async function generateCouponV2(rawMatches, isPremium) {
+  const today = new Date().toLocaleDateString('fr-FR');
+  if (todayCouponV2Cache.date === today && todayCouponV2Cache.data) {
+    const cached = todayCouponV2Cache.data;
+    if (!isPremium) return { ...cached, matches: cached.matches.slice(0, 4), coteCombinee: cached.matches.slice(0, 4).reduce((a, m) => a * m.cote, 1).toFixed(2) };
+    return cached;
+  }
+
+  const PRIORITY_COMPS = ['Premier League', 'La Liga', 'Bundesliga', 'Serie A', 'Ligue 1', 'Champions League'];
+  const pool = [
+    ...rawMatches.filter(m => PRIORITY_COMPS.some(p => m.league?.includes(p))),
+    ...rawMatches.filter(m => !PRIORITY_COMPS.some(p => m.league?.includes(p))),
+  ].slice(0, 12);
+
+  const COTES_BASE = { '1': [1.5, 1.6, 1.7, 1.8, 2.0], 'N': [3.0, 3.2, 3.4, 3.5], '2': [1.8, 2.0, 2.2, 2.5, 3.0] };
+
+  const enriched = await Promise.all(pool.map(async (m) => {
+    try {
+      const [homeStats, awayStats] = await Promise.all([
+        getTeamStatsForPrediction(m.home),
+        getTeamStatsForPrediction(m.away),
+      ]);
+
+      const lambdas = calculateLambdas(
+        { goalsScored: homeStats.goalsScored, goalsConceded: homeStats.goalsConceded, matches: Math.max(homeStats.matches, 1) },
+        { goalsScored: awayStats.goalsScored, goalsConceded: awayStats.goalsConceded, matches: Math.max(awayStats.matches, 1) }
+      );
+      const poisson = matchProbabilities(lambdas.lambdaHome, lambdas.lambdaAway);
+      const elo = eloProbabilities(homeStats.elo, awayStats.elo);
+
+      // Combinaison pondérée 45% Poisson + 35% Elo + 20% neutre
+      const pHome = poisson.pHome * 0.55 + elo.pHome * 0.35 + 20 * 0.10;
+      const pDraw = poisson.pDraw * 0.55 + elo.pDraw * 0.35 + 20 * 0.10;
+      const pAway = poisson.pAway * 0.55 + elo.pAway * 0.35 + 20 * 0.10;
+
+      // Choisir le pronostic le plus probable
+      let prono, confidence;
+      if (pHome >= pDraw && pHome >= pAway) { prono = '1'; confidence = pHome; }
+      else if (pDraw >= pHome && pDraw >= pAway) { prono = 'N'; confidence = pDraw; }
+      else { prono = '2'; confidence = pAway; }
+
+      // Cote estimée à partir de la probabilité (avec marge bookmaker ~10%)
+      const impliedOdds = Math.max(1.1, parseFloat((100 / (confidence * 0.90)).toFixed(2)));
+      // Cote arrondie aux valeurs réalistes
+      const cotesDisponibles = COTES_BASE[prono];
+      const cote = cotesDisponibles.reduce((prev, curr) =>
+        Math.abs(curr - impliedOdds) < Math.abs(prev - impliedOdds) ? curr : prev
+      );
+
+      // Étoiles selon la confiance
+      const stars = confidence >= 65 ? 3 : confidence >= 55 ? 2 : 1;
+
+      const LABELS = { '1': 'Domicile gagne', 'N': 'Match nul', '2': 'Extérieur gagne' };
+      return {
+        home: m.home, homeLogo: m.homeLogo,
+        away: m.away, awayLogo: m.awayLogo,
+        league: m.league, time: m.time || '--:--',
+        prono, label: LABELS[prono], cote, stars,
+        confidence: parseFloat(confidence.toFixed(1)),
+        predictedScore: poisson.predictedScore,
+        over25: poisson.pOver25,
+        btts: poisson.pBtts,
+        lambdaHome: lambdas.lambdaHome,
+        lambdaAway: lambdas.lambdaAway,
+        hasStats: homeStats.hasData && awayStats.hasData,
+      };
+    } catch (e) {
+      // Fallback sur l'ancienne méthode si erreur
+      const PRONOSTICS = ['1', 'N', '2'];
+      const prono = PRONOSTICS[Math.floor(Math.random() * 3)];
+      const cote = COTES_BASE[prono][Math.floor(Math.random() * COTES_BASE[prono].length)];
+      const LABELS = { '1': 'Domicile gagne', 'N': 'Match nul', '2': 'Extérieur gagne' };
+      return { home: m.home, homeLogo: m.homeLogo, away: m.away, awayLogo: m.awayLogo, league: m.league, time: m.time || '--:--', prono, label: LABELS[prono], cote, stars: 1, hasStats: false };
+    }
+  }));
+
+  // Trier par confiance décroissante, garder les 10 meilleurs
+  const sorted = enriched.sort((a, b) => (b.confidence || 0) - (a.confidence || 0)).slice(0, 10);
+  let coteCombinee = sorted.reduce((a, m) => a * m.cote, 1);
+
+  const data = { matches: sorted, coteCombinee: coteCombinee.toFixed(2), date: today, v2: true };
+  todayCouponV2Cache = { date: today, data };
+  couponHistory[today] = data;
+
+  if (!isPremium) {
+    const slice = sorted.slice(0, 4);
+    return { ...data, matches: slice, coteCombinee: slice.reduce((a, m) => a * m.cote, 1).toFixed(2) };
+  }
+  return data;
+}
+
 // /analyse
 bot.command('analyse', async (ctx) => {
   const args = ctx.message?.text?.split(' ').slice(1).join(' ').trim();
@@ -857,45 +952,43 @@ bot.command('favoris', async (ctx) => {
 
 // /coupon — génère un coupon du jour
 bot.command('coupon', async (ctx) => {
-  const loading = await ctx.reply('🎯 Génération du coupon du jour...');
+  const loading = await ctx.reply('🎯 Analyse statistique en cours...');
   try {
+    const userId = ctx.from?.id;
+    const isPremium = !!premiumUsers[userId];
     let matches = await getTodayMatches();
     if (!matches?.length) matches = await getUpcomingMatches();
     if (!matches?.length) {
       return ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, '📭 Aucun match disponible pour générer un coupon.');
     }
-    const PRIORITY_COMPS = ['Premier League','La Liga','Bundesliga','Serie A','Ligue 1','Champions League'];
-    const sorted = [
-      ...matches.filter(m => PRIORITY_COMPS.some(p => m.league?.includes(p))),
-      ...matches.filter(m => !PRIORITY_COMPS.some(p => m.league?.includes(p))),
-    ].slice(0, 4);
 
-    const PRONOSTICS = ['1','N','2'];
-    const LABELS = { '1': 'Victoire domicile', 'N': 'Match nul', '2': 'Victoire extérieur' };
-    const COTES = { '1': [1.5, 1.6, 1.7, 1.8, 2.0, 2.2], 'N': [3.0, 3.2, 3.4, 3.5], '2': [1.8, 2.0, 2.2, 2.5, 3.0] };
-    const CONFIANCE = ['⭐⭐⭐ Haute', '⭐⭐ Moyenne', '⭐ Faible'];
+    const coupon = await generateCouponV2(matches, isPremium);
+    const LABELS = { '1': 'Domicile', 'N': 'Nul', '2': 'Extérieur' };
+    const STAR_ICONS = { 3: '🔥', 2: '⭐', 1: '📊' };
 
-    let text = `🎯 *Coupon BetAnalyse — ${new Date().toLocaleDateString('fr-FR')}*\n\n`;
-    let coteCombinee = 1;
+    let text = `🎯 *Coupon BetAnalyse — ${coupon.date}*\n`;
+    text += isPremium ? `💎 _${coupon.matches.length} matchs • Analyse Poisson+Elo_\n\n` : `🆓 _4 matchs • Passez Premium pour 8+ matchs_\n\n`;
 
-    for (const m of sorted) {
-      const home = m.home || '?';
-      const away = m.away || '?';
-      const pronoIdx = Math.floor(Math.random() * 3);
-      const prono = PRONOSTICS[pronoIdx];
-      const cotesArr = COTES[prono];
-      const cote = cotesArr[Math.floor(Math.random() * cotesArr.length)];
-      const conf = CONFIANCE[Math.floor(Math.random() * 3)];
-      coteCombinee *= cote;
-      const time = m.time || '--:--';
-      text += `⚽ *${home} vs ${away}*\n`;
-      text += `🏆 ${m.league || ''} | 🕐 ${time}\n`;
-      text += `📌 Pronostic : *${prono}* — ${LABELS[prono]}\n`;
-      text += `💰 Cote : *${cote}* | ${conf}\n\n`;
+    for (const m of coupon.matches) {
+      const icon = STAR_ICONS[m.stars] || '📊';
+      text += `${icon} *${m.home} vs ${m.away}*\n`;
+      text += `🏆 ${m.league || ''} | 🕐 ${m.time}\n`;
+      text += `📌 *${m.prono}* — ${LABELS[m.prono] || m.label}`;
+      if (m.confidence) text += ` _(${m.confidence}%)_`;
+      text += `\n`;
+      text += `💰 Cote estimée : *${m.cote}*`;
+      if (m.predictedScore && m.hasStats) text += ` | Score prédit : *${m.predictedScore}*`;
+      text += `\n`;
+      if (isPremium && m.hasStats) {
+        text += `📈 Over 2.5 : ${m.over25}% | 🎯 BTTS : ${m.btts}%\n`;
+      }
+      text += `\n`;
     }
+
     text += `━━━━━━━━━━━━━━━━━\n`;
-    text += `💎 *Cote combinée : ${coteCombinee.toFixed(2)}*\n`;
-    text += `⚠️ _Pronostics à titre indicatif. Pariez responsablement._`;
+    text += `💎 *Cote combinée : ${coupon.coteCombinee}*\n`;
+    if (!isPremium) text += `\n🔒 _Premium : 8+ matchs, scores prédits, Over/Under, BTTS_\n`;
+    text += `⚠️ _Analyse statistique — pariez responsablement._`;
 
     ctx.telegram.editMessageText(ctx.chat.id, loading.message_id, null, text, { parse_mode: 'Markdown' });
   } catch (e) {
@@ -1478,7 +1571,7 @@ async function handleApi(req, res, urlObj) {
       // Fallback : si pas de matchs aujourd'hui, prendre les prochains matchs à venir
       if (!rawMatches?.length) rawMatches = await getUpcomingMatches();
       if (!rawMatches?.length) return res.end(JSON.stringify({ ok: true, matches: [], isPremium }));
-      const coupon = generateCoupon(rawMatches, isPremium);
+      const coupon = await generateCouponV2(rawMatches, isPremium);
       res.end(JSON.stringify({ ok: true, isPremium, ...coupon }));
     } else if (urlObj.pathname === '/api/coupon/historique') {
       const userId = urlObj.searchParams.get('userId');
