@@ -9,6 +9,7 @@ const path = require('path');
 const { matchProbabilities, calculateLambdas } = require('./engine/poisson');
 const { eloProbabilities, eloClass } = require('./engine/elo');
 const { collectRecentMatches, getTeamStatsForPrediction } = require('./engine/stats');
+const { savePredictions, resolveOldPredictions, getBacktestStats } = require('./engine/backtest');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
@@ -835,6 +836,10 @@ async function generateCouponV2(rawMatches, isPremium) {
   const data = { matches: sorted, coteCombinee: coteCombinee.toFixed(2), date: today, v2: true };
   todayCouponV2Cache = { date: today, data };
   couponHistory[today] = data;
+
+  // Sauvegarder les prédictions pour le backtesting (en arrière-plan)
+  const todayDate = new Date().toISOString().substring(0, 10);
+  savePredictions(sorted, todayDate).catch(e => console.error('[backtest] savePredictions:', e.message));
 
   if (!isPremium) {
     const slice = sorted.slice(0, 4);
@@ -1701,6 +1706,18 @@ async function handleApi(req, res, urlObj) {
       } catch (e) {
         res.writeHead(500); res.end(JSON.stringify({ error: e.message }));
       }
+    } else if (urlObj.pathname === '/api/backtest') {
+      const userId = parseInt(urlObj.searchParams.get('userId'));
+      if (!ADMIN_IDS.includes(userId)) {
+        res.writeHead(403); res.end(JSON.stringify({ error: 'Admin uniquement' })); return;
+      }
+      const days = parseInt(urlObj.searchParams.get('days') || '30');
+      try {
+        const stats = await getBacktestStats(days);
+        res.end(JSON.stringify({ ok: true, ...stats }));
+      } catch (e) {
+        res.writeHead(500); res.end(JSON.stringify({ error: e.message }));
+      }
     } else if (urlObj.pathname === '/api/refresh' && ADMIN_IDS.includes(parseInt(urlObj.searchParams.get('userId')))) {
       matchesCache.today = { data: [], loadedAt: 0, dateKey: '' };
       matchesCache.upcoming = { data: [], loadedAt: 0, dateKey: '' };
@@ -1833,6 +1850,9 @@ startServer().then(() => {
     // Collecte des stats historiques au démarrage puis toutes les 6h
     setTimeout(() => collectRecentMatches(7).catch(e => console.error('[stats] erreur collecte:', e.message)), 10000);
     setInterval(() => collectRecentMatches(2).catch(e => console.error('[stats] erreur collecte:', e.message)), 6 * 60 * 60 * 1000);
+    // Résolution des prédictions : toutes les 3h
+    setTimeout(() => resolveOldPredictions().catch(e => console.error('[backtest] résolution:', e.message)), 30000);
+    setInterval(() => resolveOldPredictions().catch(e => console.error('[backtest] résolution:', e.message)), 3 * 60 * 60 * 1000);
   }
   return launchBot();
 }).catch(e => {

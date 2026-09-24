@@ -990,6 +990,16 @@ async function loadProfil() {
     </select>
     <button class="plan-btn" style="margin:0;width:100%" onclick="adminActiver()">✅ Activer Premium</button>
     <div id="admin-msg" style="margin-top:8px;font-size:12px;text-align:center"></div>
+  </div>
+  <div class="card" style="border:1px solid #a855f744;background:linear-gradient(135deg,#0d0a1a,#100d1f)">
+    <div class="card-title" style="color:#a855f7">📊 Backtesting</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Taux de réussite des prédictions Poisson+Elo</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button onclick="loadBacktest(7)"  style="flex:1;background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px;font-weight:700;cursor:pointer">7 jours</button>
+      <button onclick="loadBacktest(30)" style="flex:1;background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px;font-weight:700;cursor:pointer">30 jours</button>
+      <button onclick="loadBacktest(90)" style="flex:1;background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px;font-weight:700;cursor:pointer">90 jours</button>
+    </div>
+    <div id="backtest-content"><div style="font-size:12px;color:var(--muted);text-align:center;padding:12px">Cliquer sur une période pour charger</div></div>
   </div>` : ''}
   <div class="disclaimer">BetAnalyse — Pronostics à titre informatif uniquement.<br>Pariez de façon responsable.</div>`;
 
@@ -1233,6 +1243,72 @@ function formatDate(dateStr) {
     const d = new Date(dateStr);
     return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
   } catch { return dateStr; }
+}
+
+// ── Backtesting ───────────────────────────────────────────────────
+async function loadBacktest(days) {
+  const el = document.getElementById('backtest-content');
+  if (!el) return;
+  el.innerHTML = `<div style="text-align:center;padding:12px;font-size:12px;color:var(--muted)">⏳ Chargement...</div>`;
+  try {
+    const r = await fetch(`${BASE}/api/backtest?userId=${userId}&days=${days}`);
+    const d = await r.json();
+    if (!d.ok || !d.total) {
+      el.innerHTML = `<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px">${d.message || 'Pas encore de données. Les prédictions s\'accumulent au fil des jours.'}</div>`;
+      return;
+    }
+
+    const accColor = d.accuracy >= 55 ? 'var(--win)' : d.accuracy >= 45 ? 'var(--draw)' : 'var(--lose)';
+    const brierColor = d.avgBrierScore <= 0.2 ? 'var(--win)' : d.avgBrierScore <= 0.35 ? 'var(--draw)' : 'var(--lose)';
+
+    let html = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+        <div style="background:var(--card2);border-radius:10px;padding:12px;text-align:center">
+          <div style="font-size:26px;font-weight:900;color:${accColor}">${d.accuracy}%</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.3px">Précision</div>
+          <div style="font-size:11px;color:var(--muted2);margin-top:4px">${d.correct}/${d.total} matchs</div>
+        </div>
+        <div style="background:var(--card2);border-radius:10px;padding:12px;text-align:center">
+          <div style="font-size:26px;font-weight:900;color:${brierColor}">${d.avgBrierScore}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.3px">Brier Score</div>
+          <div style="font-size:11px;color:var(--muted2);margin-top:4px">0=parfait · 1=aléatoire</div>
+        </div>
+      </div>`;
+
+    if (d.highConfAccuracy !== null) {
+      html += `<div style="background:var(--card2);border-radius:8px;padding:10px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:12px;font-weight:700">Prédictions haute confiance (≥60%)</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${d.highConfPredictions} prédictions</div>
+        </div>
+        <div style="font-size:20px;font-weight:900;color:${d.highConfAccuracy >= 60 ? 'var(--win)' : 'var(--draw)'}">
+          ${d.highConfAccuracy}%
+        </div>
+      </div>`;
+    }
+
+    if (d.topComps?.length) {
+      html += `<div style="font-size:11px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Par compétition</div>`;
+      for (const c of d.topComps) {
+        const w = Math.min(100, c.accuracy);
+        const col = c.accuracy >= 55 ? 'var(--win)' : c.accuracy >= 45 ? 'var(--draw)' : 'var(--lose)';
+        html += `<div style="margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+            <span style="font-size:12px;font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name}</span>
+            <span style="font-size:12px;font-weight:800;color:${col}">${c.accuracy}% <span style="color:var(--muted);font-weight:500">(${c.total})</span></span>
+          </div>
+          <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden">
+            <div style="width:${w}%;height:100%;background:${col};border-radius:3px"></div>
+          </div>
+        </div>`;
+      }
+    }
+
+    html += `<div style="font-size:10px;color:var(--muted);margin-top:8px;text-align:center">Période : ${d.period} · depuis ${d.since}</div>`;
+    el.innerHTML = html;
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:var(--lose);text-align:center;padding:8px">⚠️ Erreur : ${e.message}</div>`;
+  }
 }
 
 // ── Admin ─────────────────────────────────────────────────────────
