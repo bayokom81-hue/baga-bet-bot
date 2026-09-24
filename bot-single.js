@@ -195,7 +195,10 @@ function apifMatchToNorm(f) {
 async function espnMatchesToNorm(dateStr) {
   try {
     const d = dateStr.replace(/-/g, '');
-    const r = await axios.get(`https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard?dates=${d}&limit=200`, { timeout: 15000 });
+    const r = await axios.get(`https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard?dates=${d}&limit=200`, {
+      timeout: 15000,
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; BetAnalyseBot/1.0)' },
+    });
     const events = r.data?.events || [];
     return events.map(e => {
       const comp = e.competitions?.[0];
@@ -1514,6 +1517,11 @@ async function handleApi(req, res, urlObj) {
       premiumUsers[targetId] = { plan: planKey, expiresAt: expiresAt.toISOString() };
       saveData();
       res.end(JSON.stringify({ ok: true, expiresAt: expiresAt.toISOString(), plan: planKey }));
+    } else if (urlObj.pathname === '/api/refresh' && ADMIN_IDS.includes(parseInt(urlObj.searchParams.get('userId')))) {
+      matchesCache.today = { data: [], loadedAt: 0, dateKey: '' };
+      matchesCache.upcoming = { data: [], loadedAt: 0, dateKey: '' };
+      await refreshMatchesCache();
+      res.end(JSON.stringify({ ok: true, today: matchesCache.today.data.length, upcoming: matchesCache.upcoming.data.length }));
     } else if (urlObj.pathname === '/api/profil') {
       const userId = urlObj.searchParams.get('userId');
       const isAdmin = ADMIN_IDS.includes(parseInt(userId));
