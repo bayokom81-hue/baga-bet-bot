@@ -9,6 +9,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.trim())).filter(Boolean);
 const APISPORTS_KEY = process.env.APISPORTS_KEY || '';
+const FOOTBALL_DATA_KEY = process.env.FOOTBALL_DATA_KEY || '';
 const DEMO_MODE = false;
 
 // ── Jemenipay ─────────────────────────────────────────────────────
@@ -234,6 +235,43 @@ async function espnMatchesToNorm(dateStr) {
   }
 }
 
+// ── football-data.org (clé gratuite, ~10 ligues majeures) ────────
+const FD_COMPETITIONS = ['PL','PD','BL1','SA','FL1','CL','EL','EC','WC','PPL','DED'];
+
+async function fdMatchesToNorm(dateStr) {
+  if (!FOOTBALL_DATA_KEY) return [];
+  try {
+    const r = await axios.get(`https://api.football-data.org/v4/matches?dateFrom=${dateStr}&dateTo=${dateStr}`, {
+      headers: { 'X-Auth-Token': FOOTBALL_DATA_KEY },
+      timeout: 15000,
+    });
+    const matches = r.data?.matches || [];
+    console.log(`FD [${dateStr}]: ${matches.length} matchs`);
+    return matches.map(m => {
+      const isLive = m.status === 'IN_PLAY' || m.status === 'PAUSED';
+      const isFinished = m.status === 'FINISHED';
+      const kickoff = m.utcDate ? new Date(m.utcDate) : null;
+      return {
+        home: m.homeTeam?.shortName || m.homeTeam?.name || '',
+        homeLogo: '',
+        away: m.awayTeam?.shortName || m.awayTeam?.name || '',
+        awayLogo: '',
+        scoreHome: (isLive || isFinished) ? m.score?.fullTime?.home : null,
+        scoreAway: (isLive || isFinished) ? m.score?.fullTime?.away : null,
+        time: kickoff ? kickoff.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Bamako' }) : '--:--',
+        date: dateStr,
+        status: isLive ? 'IN_PLAY' : isFinished ? 'FINISHED' : 'SCHEDULED',
+        league: m.competition?.name || '',
+        leagueLogo: m.competition?.emblem || '',
+        country: m.area?.name || '',
+      };
+    });
+  } catch(e) {
+    console.error('FD:', e.message);
+    return [];
+  }
+}
+
 // ── API TheSportsDB (gratuit, sans clé) ──────────────────────────
 const TSDB = 'https://www.thesportsdb.com/api/v1/json/3';
 
@@ -365,8 +403,18 @@ async function refreshMatchesCache() {
         }
       }
       console.log(`Cache matchs API-Football: ${todayAll.length} aujourd'hui, ${upcomingAll.length} à venir`);
+    } else if (FOOTBALL_DATA_KEY) {
+      // ── Source 2 : football-data.org (clé gratuite, fiable serveur) ─
+      const nextDates = [1, 2, 3].map(d => { const dt = new Date(); dt.setDate(dt.getDate() + d); return dt.toISOString().split('T')[0]; });
+      const [fdToday, ...fdNext] = await Promise.all([
+        fdMatchesToNorm(todayStr),
+        ...nextDates.map(ds => fdMatchesToNorm(ds)),
+      ]);
+      todayAll.push(...fdToday);
+      for (const list of fdNext) upcomingAll.push(...list);
+      console.log(`Cache matchs FD: ${todayAll.length} aujourd'hui, ${upcomingAll.length} à venir`);
     } else {
-      // ── Source 2 : ESPN (gratuit, sans clé, ~100+ matchs/jour) ───
+      // ── Source 3 : ESPN (gratuit, sans clé, ~100+ matchs/jour) ───
       const nextDates = [1, 2, 3].map(d => { const dt = new Date(); dt.setDate(dt.getDate() + d); return dt.toISOString().split('T')[0]; });
       const [espnToday, ...espnNext] = await Promise.all([
         espnMatchesToNorm(todayStr),
