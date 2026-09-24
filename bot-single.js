@@ -212,18 +212,49 @@ async function tsdb(endpoint, { retries = 3, delay = 800 } = {}) {
 
 // IDs des ligues TheSportsDB
 const TSDB_LEAGUES = [
-  // Championnats nationaux
-  { id: '4328', name: 'Premier League',     searchName: 'English Premier League',   logo: 'https://www.thesportsdb.com/images/media/league/badge/i6o0kh1549879062.png', type: 'club' },
-  { id: '4335', name: 'La Liga',            searchName: 'Spanish La Liga',          logo: 'https://www.thesportsdb.com/images/media/league/badge/7onmyv1534768460.png', type: 'club' },
-  { id: '4331', name: 'Bundesliga',         searchName: 'German Bundesliga',        logo: 'https://www.thesportsdb.com/images/media/league/badge/0j55yv1534764906.png', type: 'club' },
-  { id: '4332', name: 'Serie A',            searchName: 'Italian Serie A',          logo: 'https://www.thesportsdb.com/images/media/league/badge/zkwyk11534768505.png', type: 'club' },
-  { id: '4334', name: 'Ligue 1',            searchName: 'French Ligue 1',           logo: 'https://www.thesportsdb.com/images/media/league/badge/323yvv1534770164.png', type: 'club' },
-  { id: '4337', name: 'Eredivisie',         searchName: 'Dutch Eredivisie',         logo: '', type: 'club' },
-  { id: '4344', name: 'Primeira Liga',      searchName: 'Portuguese Primeira Liga', logo: '', type: 'club' },
+  // Europe - Top 5
+  { id: '4328', name: 'Premier League',      searchName: 'English Premier League',    logo: 'https://www.thesportsdb.com/images/media/league/badge/i6o0kh1549879062.png', type: 'club' },
+  { id: '4335', name: 'La Liga',             searchName: 'Spanish La Liga',           logo: 'https://www.thesportsdb.com/images/media/league/badge/7onmyv1534768460.png', type: 'club' },
+  { id: '4331', name: 'Bundesliga',          searchName: 'German Bundesliga',         logo: 'https://www.thesportsdb.com/images/media/league/badge/0j55yv1534764906.png', type: 'club' },
+  { id: '4332', name: 'Serie A',             searchName: 'Italian Serie A',           logo: 'https://www.thesportsdb.com/images/media/league/badge/zkwyk11534768505.png', type: 'club' },
+  { id: '4334', name: 'Ligue 1',             searchName: 'French Ligue 1',            logo: 'https://www.thesportsdb.com/images/media/league/badge/323yvv1534770164.png', type: 'club' },
+  // Europe - Autres ligues
+  { id: '4337', name: 'Eredivisie',          searchName: 'Dutch Eredivisie',          logo: '', type: 'club' },
+  { id: '4344', name: 'Primeira Liga',       searchName: 'Portuguese Primeira Liga',  logo: '', type: 'club' },
+  { id: '4339', name: 'Pro League',          searchName: 'Belgian Pro League',        logo: '', type: 'club' },
+  { id: '4342', name: 'Super Lig',           searchName: 'Turkish Super Lig',         logo: '', type: 'club' },
+  { id: '4346', name: 'Süper Lig',           searchName: 'Russian Premier League',    logo: '', type: 'club' },
+  { id: '4341', name: 'Ekstraklasa',         searchName: 'Polish Ekstraklasa',        logo: '', type: 'club' },
+  { id: '4350', name: 'Championship',        searchName: 'English Championship',      logo: '', type: 'club' },
+  { id: '4375', name: 'Scottish Premiership',searchName: 'Scottish Premiership',      logo: '', type: 'club' },
+  { id: '4347', name: 'Ligue 2',             searchName: 'French Ligue 2',            logo: '', type: 'club' },
+  { id: '4336', name: 'Segunda División',    searchName: 'Spanish Segunda',           logo: '', type: 'club' },
+  { id: '4333', name: 'Serie B',             searchName: 'Italian Serie B',           logo: '', type: 'club' },
+  { id: '4338', name: '2. Bundesliga',       searchName: 'German 2. Bundesliga',      logo: '', type: 'club' },
   // Coupes européennes
-  { id: '4480', name: 'Champions League',   searchName: 'UEFA Champions League',    logo: 'https://www.thesportsdb.com/images/media/league/badge/qoYDXl1621338005.png', type: 'cup' },
-  { id: '4481', name: 'Europa League',      searchName: 'UEFA Europa League',       logo: 'https://www.thesportsdb.com/images/media/league/badge/ehj7ky1549878838.png', type: 'cup' },
-  { id: '5071', name: 'Conference League',  searchName: 'UEFA Conference League',   logo: 'https://www.thesportsdb.com/images/media/league/badge/287b9k1610287851.png', type: 'cup' },
+  { id: '4480', name: 'Champions League',    searchName: 'UEFA Champions League',     logo: 'https://www.thesportsdb.com/images/media/league/badge/qoYDXl1621338005.png', type: 'cup' },
+  { id: '4481', name: 'Europa League',       searchName: 'UEFA Europa League',        logo: 'https://www.thesportsdb.com/images/media/league/badge/ehj7ky1549878838.png', type: 'cup' },
+  { id: '5071', name: 'Conference League',   searchName: 'UEFA Conference League',    logo: 'https://www.thesportsdb.com/images/media/league/badge/287b9k1610287851.png', type: 'cup' },
+  // Amérique
+  { id: '4346', name: 'MLS',                 searchName: 'Major League Soccer',       logo: '', type: 'club' },
+  { id: '4351', name: 'Brasileirão',         searchName: 'Brazilian Serie A',         logo: '', type: 'club' },
+  { id: '4406', name: 'Argentine Liga',      searchName: 'Argentine Primera Division',logo: '', type: 'club' },
+  { id: '4397', name: 'Liga MX',             searchName: 'Mexican Liga MX',           logo: '', type: 'club' },
+  { id: '4423', name: 'Copa Libertadores',   searchName: 'Copa Libertadores',         logo: '', type: 'cup' },
+  // Asie & Moyen-Orient
+  { id: '4354', name: 'Saudi Pro League',    searchName: 'Saudi Pro League',          logo: '', type: 'club' },
+  { id: '4356', name: 'J1 League',           searchName: 'Japanese J1 League',        logo: '', type: 'club' },
+  { id: '4359', name: 'K League',            searchName: 'Korean K League 1',         logo: '', type: 'club' },
+  { id: '4361', name: 'Chinese Super League',searchName: 'Chinese Super League',      logo: '', type: 'club' },
+  // Afrique
+  { id: '4576', name: 'CAF Champions League',searchName: 'CAF Champions League',      logo: '', type: 'cup' },
+  { id: '4632', name: 'AFCON',               searchName: 'Africa Cup of Nations',     logo: '', type: 'national' },
+  // Compétitions nationales
+  { id: '4370', name: 'FA Cup',              searchName: 'English FA Cup',            logo: '', type: 'cup' },
+  { id: '4371', name: 'Coupe de France',     searchName: 'Coupe de France',           logo: '', type: 'cup' },
+  { id: '4399', name: 'Copa del Rey',        searchName: 'Copa del Rey',              logo: '', type: 'cup' },
+  { id: '4400', name: 'DFB Pokal',           searchName: 'DFB Pokal',                 logo: '', type: 'cup' },
+  { id: '4401', name: 'Coppa Italia',        searchName: 'Coppa Italia',              logo: '', type: 'cup' },
 ];
 
 // Cache des matchs
