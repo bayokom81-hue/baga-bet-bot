@@ -1006,7 +1006,27 @@ bot.command('coupon', async (ctx) => {
 bot.command('profil', (ctx) => {
   const u = ctx.from;
   const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || 'N/A';
-  ctx.replyWithMarkdown(`👤 *Mon Profil*\n\n*Nom :* ${name}\n*Username :* @${u.username || 'non renseigné'}\n*ID :* \`${u.id}\`\n\n🏷️ *Plan :* 🆓 Gratuit\n\n_Passez à Premium pour plus de fonctionnalités !_`);
+  const prem = premiumUsers[u.id];
+  const isAdmin = ADMIN_IDS.includes(u.id);
+
+  if (prem) {
+    const exp = new Date(prem.expiresAt);
+    const daysLeft = Math.max(0, Math.ceil((exp - Date.now()) / 86400000));
+    const planLabel = { mensuel: 'Mensuel', trimestriel: 'Trimestriel', annuel: 'Annuel' }[prem.plan] || prem.plan;
+    ctx.replyWithMarkdown(
+      `👤 *Mon Profil*\n\n*Nom :* ${name}\n*Username :* @${u.username || 'non renseigné'}\n*ID :* \`${u.id}\`\n\n` +
+      `🏷️ *Plan :* 💎 Premium — ${planLabel}\n` +
+      `📅 *Expire le :* ${exp.toLocaleDateString('fr-FR')}\n` +
+      `⏳ *Jours restants :* ${daysLeft} jour${daysLeft > 1 ? 's' : ''}\n\n` +
+      `✅ Accès complet à toutes les fonctionnalités${isAdmin ? '\n🛡️ Compte administrateur' : ''}`
+    );
+  } else {
+    ctx.replyWithMarkdown(
+      `👤 *Mon Profil*\n\n*Nom :* ${name}\n*Username :* @${u.username || 'non renseigné'}\n*ID :* \`${u.id}\`\n\n` +
+      `🏷️ *Plan :* 🆓 Gratuit\n\n` +
+      `_Passez à Premium pour accéder au coupon complet, analyses illimitées et plus !_`
+    );
+  }
 });
 
 // Numéro de paiement manuel de l'admin
