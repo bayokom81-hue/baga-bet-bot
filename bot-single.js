@@ -403,28 +403,26 @@ async function refreshMatchesCache() {
         }
       }
       console.log(`Cache matchs API-Football: ${todayAll.length} aujourd'hui, ${upcomingAll.length} à venir`);
-    } else if (FOOTBALL_DATA_KEY) {
-      // ── Source 2 : football-data.org (clé gratuite, fiable serveur) ─
-      const nextDates = [1, 2, 3].map(d => { const dt = new Date(); dt.setDate(dt.getDate() + d); return dt.toISOString().split('T')[0]; });
-      const [fdToday, ...fdNext] = await Promise.all([
-        fdMatchesToNorm(todayStr),
-        ...nextDates.map(ds => fdMatchesToNorm(ds)),
-      ]);
-      todayAll.push(...fdToday);
-      for (const list of fdNext) upcomingAll.push(...list);
-      console.log(`Cache matchs FD: ${todayAll.length} aujourd'hui, ${upcomingAll.length} à venir`);
     } else {
-      // ── Source 3 : ESPN (gratuit, sans clé, ~100+ matchs/jour) ───
+      // ── Sources 2+3 en parallèle : football-data.org + ESPN ──────
       const nextDates = [1, 2, 3].map(d => { const dt = new Date(); dt.setDate(dt.getDate() + d); return dt.toISOString().split('T')[0]; });
-      const [espnToday, ...espnNext] = await Promise.all([
+      const [fdToday, espnToday, ...rest] = await Promise.all([
+        FOOTBALL_DATA_KEY ? fdMatchesToNorm(todayStr) : Promise.resolve([]),
         espnMatchesToNorm(todayStr),
-        ...nextDates.map(ds => espnMatchesToNorm(ds)),
+        ...nextDates.map(ds => FOOTBALL_DATA_KEY ? fdMatchesToNorm(ds) : espnMatchesToNorm(ds)),
       ]);
-      todayAll.push(...espnToday);
-      for (const list of espnNext) upcomingAll.push(...list);
-      console.log(`Cache matchs ESPN: ${todayAll.length} aujourd'hui, ${upcomingAll.length} à venir`);
+      // Fusionner en évitant les doublons
+      const addUnique = (arr, items) => {
+        for (const m of items) {
+          if (!arr.find(x => x.home === m.home && x.away === m.away)) arr.push(m);
+        }
+      };
+      addUnique(todayAll, fdToday);
+      addUnique(todayAll, espnToday);
+      for (const list of rest) addUnique(upcomingAll, list);
+      console.log(`Cache matchs FD+ESPN: ${todayAll.length} aujourd'hui, ${upcomingAll.length} à venir`);
 
-      // ── Fallback : TheSportsDB (si ESPN vide) ────────────────────
+      // ── Fallback TSDB si tout est vide ───────────────────────────
       if (!todayAll.length && !upcomingAll.length) {
         const results = await Promise.all(
           TSDB_LEAGUES.map(l => tsdb(`eventsnextleague.php?id=${l.id}`).then(d => ({ d, l })))
