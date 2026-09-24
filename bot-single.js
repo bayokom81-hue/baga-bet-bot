@@ -197,8 +197,13 @@ async function espnMatchesToNorm(dateStr) {
     const d = dateStr.replace(/-/g, '');
     const r = await axios.get(`https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard?dates=${d}&limit=200`, {
       timeout: 15000,
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; BetAnalyseBot/1.0)' },
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'Referer': 'https://www.espn.com/',
+      },
     });
+    console.log(`ESPN [${dateStr}]: ${r.data?.events?.length ?? 0} matchs, status=${r.status}`);
     const events = r.data?.events || [];
     return events.map(e => {
       const comp = e.competitions?.[0];
