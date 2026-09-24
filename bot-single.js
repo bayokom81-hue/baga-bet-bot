@@ -10,6 +10,7 @@ const { matchProbabilities, calculateLambdas } = require('./engine/poisson');
 const { eloProbabilities, eloClass } = require('./engine/elo');
 const { collectRecentMatches, getTeamStatsForPrediction } = require('./engine/stats');
 const { savePredictions, resolveOldPredictions, getBacktestStats } = require('./engine/backtest');
+const { getCurrentWeights, calibrateWeights, combineProbabilities } = require('./engine/calibration');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
@@ -783,10 +784,9 @@ async function generateCouponV2(rawMatches, isPremium) {
       const poisson = matchProbabilities(lambdas.lambdaHome, lambdas.lambdaAway);
       const elo = eloProbabilities(homeStats.elo, awayStats.elo);
 
-      // Combinaison pondérée 45% Poisson + 35% Elo + 20% neutre
-      const pHome = poisson.pHome * 0.55 + elo.pHome * 0.35 + 20 * 0.10;
-      const pDraw = poisson.pDraw * 0.55 + elo.pDraw * 0.35 + 20 * 0.10;
-      const pAway = poisson.pAway * 0.55 + elo.pAway * 0.35 + 20 * 0.10;
+      // Combinaison avec poids calibrés automatiquement
+      const combined = await combineProbabilities(poisson, elo);
+      const { pHome, pDraw, pAway, weights: usedWeights } = combined;
 
       // Choisir le pronostic le plus probable
       let prono, confidence;
@@ -1688,13 +1688,8 @@ async function handleApi(req, res, urlObj) {
         );
         const poisson = matchProbabilities(lambdas.lambdaHome, lambdas.lambdaAway);
         const elo = eloProbabilities(homeStats.elo, awayStats.elo);
-        // Combinaison pondérée Poisson 45% + Elo 35% (Groq non inclus ici)
-        const w = { poisson: 0.45, elo: 0.35, groq: 0.20 };
-        const combined = {
-          pHome: parseFloat((poisson.pHome * (w.poisson + w.groq) + elo.pHome * w.elo).toFixed(1)),
-          pDraw: parseFloat((poisson.pDraw * (w.poisson + w.groq) + elo.pDraw * w.elo).toFixed(1)),
-          pAway: parseFloat((poisson.pAway * (w.poisson + w.groq) + elo.pAway * w.elo).toFixed(1)),
-        };
+        const combined = await combineProbabilities(poisson, elo);
+        const w = combined.weights;
         res.end(JSON.stringify({
           ok: true, home, away,
           lambdaHome: lambdas.lambdaHome, lambdaAway: lambdas.lambdaAway,
@@ -1713,8 +1708,8 @@ async function handleApi(req, res, urlObj) {
       }
       const days = parseInt(urlObj.searchParams.get('days') || '30');
       try {
-        const stats = await getBacktestStats(days);
-        res.end(JSON.stringify({ ok: true, ...stats }));
+        const [stats, weights] = await Promise.all([getBacktestStats(days), getCurrentWeights()]);
+        res.end(JSON.stringify({ ok: true, ...stats, modelWeights: weights }));
       } catch (e) {
         res.writeHead(500); res.end(JSON.stringify({ error: e.message }));
       }
@@ -1850,9 +1845,15 @@ startServer().then(() => {
     // Collecte des stats historiques au démarrage puis toutes les 6h
     setTimeout(() => collectRecentMatches(7).catch(e => console.error('[stats] erreur collecte:', e.message)), 10000);
     setInterval(() => collectRecentMatches(2).catch(e => console.error('[stats] erreur collecte:', e.message)), 6 * 60 * 60 * 1000);
-    // Résolution des prédictions : toutes les 3h
-    setTimeout(() => resolveOldPredictions().catch(e => console.error('[backtest] résolution:', e.message)), 30000);
-    setInterval(() => resolveOldPredictions().catch(e => console.error('[backtest] résolution:', e.message)), 3 * 60 * 60 * 1000);
+    // Résolution des prédictions : toutes les 3h, puis recalibration des poids
+    setTimeout(async () => {
+      await resolveOldPredictions().catch(e => console.error('[backtest] résolution:', e.message));
+      await calibrateWeights().catch(e => console.error('[calibration] erreur:', e.message));
+    }, 30000);
+    setInterval(async () => {
+      await resolveOldPredictions().catch(e => console.error('[backtest] résolution:', e.message));
+      await calibrateWeights().catch(e => console.error('[calibration] erreur:', e.message));
+    }, 3 * 60 * 60 * 1000);
   }
   return launchBot();
 }).catch(e => {

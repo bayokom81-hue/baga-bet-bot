@@ -1304,6 +1304,23 @@ async function loadBacktest(days) {
       }
     }
 
+    // Poids actifs
+    if (d.modelWeights) {
+      const mw = d.modelWeights;
+      html += `<div style="background:var(--card2);border-radius:8px;padding:10px 12px;margin-top:8px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Poids des modèles (auto-calibrés)</div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          ${[['Poisson','var(--accent)',mw.poisson],['Elo','var(--gold)',mw.elo],['Groq IA','#a855f7',mw.groq]].map(([name,col,val])=>`
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="width:52px;font-size:11px;font-weight:600;color:${col}">${name}</div>
+            <div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+              <div style="width:${(val*100).toFixed(0)}%;height:100%;background:${col};border-radius:3px"></div>
+            </div>
+            <div style="font-size:11px;font-weight:800;color:${col};width:32px;text-align:right">${(val*100).toFixed(0)}%</div>
+          </div>`).join('')}
+        </div>
+      </div>`;
+    }
     html += `<div style="font-size:10px;color:var(--muted);margin-top:8px;text-align:center">Période : ${d.period} · depuis ${d.since}</div>`;
     el.innerHTML = html;
   } catch(e) {
