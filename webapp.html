@@ -927,7 +927,7 @@ async function loadProfil() {
         planLabel = d.plan;
         expiresAt = d.expiresAt;
         const exp = new Date(expiresAt);
-        daysLeft = Math.max(0, Math.ceil((exp - Date.now()) / 86400000));
+        daysLeft = Math.max(0, Math.floor((exp - Date.now()) / 86400000));
       }
     }
   } catch(e) {}

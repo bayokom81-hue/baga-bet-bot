@@ -1006,12 +1006,15 @@ bot.command('coupon', async (ctx) => {
 bot.command('profil', (ctx) => {
   const u = ctx.from;
   const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || 'N/A';
-  const prem = premiumUsers[String(u.id)] || premiumUsers[u.id];
   const isAdmin = ADMIN_IDS.includes(u.id);
+  // Toujours lire depuis premiumUsers avec les deux formats de clé
+  const prem = premiumUsers[String(u.id)] || premiumUsers[u.id] || null;
 
   if (prem) {
     const exp = new Date(prem.expiresAt);
-    const daysLeft = Math.max(0, Math.ceil((exp - Date.now()) / 86400000));
+    // Calcul en jours complets (identique à la Mini App)
+    const msLeft = exp - Date.now();
+    const daysLeft = Math.max(0, Math.floor(msLeft / 86400000));
     const planLabel = { mensuel: 'Mensuel', trimestriel: 'Trimestriel', annuel: 'Annuel' }[prem.plan] || prem.plan;
     ctx.replyWithMarkdown(
       `👤 *Mon Profil*\n\n*Nom :* ${name}\n*Username :* @${u.username || 'non renseigné'}\n*ID :* \`${u.id}\`\n\n` +
