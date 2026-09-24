@@ -191,6 +191,41 @@ function apifMatchToNorm(f) {
   };
 }
 
+// ── API ESPN (gratuite, sans clé, ~100 matchs/jour) ─────────────
+async function espnMatchesToNorm(dateStr) {
+  try {
+    const d = dateStr.replace(/-/g, '');
+    const r = await axios.get(`https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard?dates=${d}&limit=200`, { timeout: 15000 });
+    const events = r.data?.events || [];
+    return events.map(e => {
+      const comp = e.competitions?.[0];
+      const home = comp?.competitors?.find(c => c.homeAway === 'home');
+      const away = comp?.competitors?.find(c => c.homeAway === 'away');
+      const status = comp?.status?.type?.name || 'STATUS_SCHEDULED';
+      const isLive = status === 'STATUS_IN_PROGRESS';
+      const isFinished = status === 'STATUS_FINAL';
+      const kickoff = e.date ? new Date(e.date) : null;
+      return {
+        home: home?.team?.displayName || '',
+        homeLogo: home?.team?.logo || '',
+        away: away?.team?.displayName || '',
+        awayLogo: away?.team?.logo || '',
+        scoreHome: (isLive || isFinished) ? parseInt(home?.score || 0) : null,
+        scoreAway: (isLive || isFinished) ? parseInt(away?.score || 0) : null,
+        time: kickoff ? kickoff.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Bamako' }) : '--:--',
+        date: dateStr,
+        status: isLive ? 'IN_PLAY' : isFinished ? 'FINISHED' : 'SCHEDULED',
+        league: e.season?.type?.name || e.name?.split(' - ')?.[0] || '',
+        leagueLogo: '',
+        country: '',
+      };
+    });
+  } catch(e) {
+    console.error('ESPN:', e.message);
+    return [];
+  }
+}
+
 // ── API TheSportsDB (gratuit, sans clé) ──────────────────────────
 const TSDB = 'https://www.thesportsdb.com/api/v1/json/3';
 
@@ -323,28 +358,30 @@ async function refreshMatchesCache() {
       }
       console.log(`Cache matchs API-Football: ${todayAll.length} aujourd'hui, ${upcomingAll.length} à venir`);
     } else {
-      // ── Fallback : TheSportsDB ────────────────────────────────────
-      const results = await Promise.all(
-        TSDB_LEAGUES.map(l => tsdb(`eventsnextleague.php?id=${l.id}`).then(d => ({ d, l })))
-      );
-      for (const { d, l } of results) {
-        for (const m of d?.events || []) {
-          const norm = tsdbMatchToNorm(m, l);
-          if (norm.date === todayStr) todayAll.push(norm);
-          else if (norm.date > todayStr) upcomingAll.push(norm);
+      // ── Source 2 : ESPN (gratuit, sans clé, ~100+ matchs/jour) ───
+      const nextDates = [1, 2, 3].map(d => { const dt = new Date(); dt.setDate(dt.getDate() + d); return dt.toISOString().split('T')[0]; });
+      const [espnToday, ...espnNext] = await Promise.all([
+        espnMatchesToNorm(todayStr),
+        ...nextDates.map(ds => espnMatchesToNorm(ds)),
+      ]);
+      todayAll.push(...espnToday);
+      for (const list of espnNext) upcomingAll.push(...list);
+      console.log(`Cache matchs ESPN: ${todayAll.length} aujourd'hui, ${upcomingAll.length} à venir`);
+
+      // ── Fallback : TheSportsDB (si ESPN vide) ────────────────────
+      if (!todayAll.length && !upcomingAll.length) {
+        const results = await Promise.all(
+          TSDB_LEAGUES.map(l => tsdb(`eventsnextleague.php?id=${l.id}`).then(d => ({ d, l })))
+        );
+        for (const { d, l } of results) {
+          for (const m of d?.events || []) {
+            const norm = tsdbMatchToNorm(m, l);
+            if (norm.date === todayStr) todayAll.push(norm);
+            else if (norm.date > todayStr) upcomingAll.push(norm);
+          }
         }
+        console.log(`Cache matchs TSDB: ${todayAll.length} aujourd'hui, ${upcomingAll.length} à venir`);
       }
-      const todayResults = await Promise.all(
-        TSDB_LEAGUES.map(l => tsdb(`eventsday.php?d=${todayStr}&l=${encodeURIComponent(l.name)}`).then(d => ({ d, l })))
-      );
-      for (const { d, l } of todayResults) {
-        for (const m of d?.events || []) {
-          const norm = tsdbMatchToNorm(m, l);
-          if (!todayAll.find(x => x.home === norm.home && x.away === norm.away))
-            todayAll.push(norm);
-        }
-      }
-      console.log(`Cache matchs TSDB: ${todayAll.length} aujourd'hui, ${upcomingAll.length} à venir`);
     }
 
     matchesCache.today = { data: todayAll, loadedAt: Date.now(), dateKey: todayStr };
