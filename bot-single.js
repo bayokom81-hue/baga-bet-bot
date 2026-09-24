@@ -1574,7 +1574,7 @@ async function startServer() {
     console.log(`Serveur HTTP sur port ${PORT}`);
     if (RENDER_URL) {
       setInterval(() => {
-        http.get(RENDER_URL).on('error', () => {});
+        axios.get(RENDER_URL, { timeout: 10000 }).catch(() => {});
         console.log('Ping keep-alive envoyé');
       }, 10 * 60 * 1000);
     }
