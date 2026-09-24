@@ -5,6 +5,11 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
+// ── Moteurs de probabilités ───────────────────────────────────────
+const { matchProbabilities, calculateLambdas } = require('./engine/poisson');
+const { eloProbabilities, eloClass } = require('./engine/elo');
+const { collectRecentMatches, getTeamStatsForPrediction } = require('./engine/stats');
+
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.trim())).filter(Boolean);
@@ -1568,6 +1573,41 @@ async function handleApi(req, res, urlObj) {
       premiumUsers[targetId] = { plan: planKey, expiresAt: expiresAt.toISOString() };
       saveData();
       res.end(JSON.stringify({ ok: true, expiresAt: expiresAt.toISOString(), plan: planKey }));
+    } else if (urlObj.pathname === '/api/probabilites') {
+      const home = urlObj.searchParams.get('home');
+      const away = urlObj.searchParams.get('away');
+      if (!home || !away) {
+        res.writeHead(400); res.end(JSON.stringify({ error: 'home et away requis' })); return;
+      }
+      try {
+        const [homeStats, awayStats] = await Promise.all([
+          getTeamStatsForPrediction(home),
+          getTeamStatsForPrediction(away),
+        ]);
+        const lambdas = calculateLambdas(
+          { goalsScored: homeStats.goalsScored, goalsConceded: homeStats.goalsConceded, matches: Math.max(homeStats.matches, 1) },
+          { goalsScored: awayStats.goalsScored, goalsConceded: awayStats.goalsConceded, matches: Math.max(awayStats.matches, 1) }
+        );
+        const poisson = matchProbabilities(lambdas.lambdaHome, lambdas.lambdaAway);
+        const elo = eloProbabilities(homeStats.elo, awayStats.elo);
+        // Combinaison pondérée Poisson 45% + Elo 35% (Groq non inclus ici)
+        const w = { poisson: 0.45, elo: 0.35, groq: 0.20 };
+        const combined = {
+          pHome: parseFloat((poisson.pHome * (w.poisson + w.groq) + elo.pHome * w.elo).toFixed(1)),
+          pDraw: parseFloat((poisson.pDraw * (w.poisson + w.groq) + elo.pDraw * w.elo).toFixed(1)),
+          pAway: parseFloat((poisson.pAway * (w.poisson + w.groq) + elo.pAway * w.elo).toFixed(1)),
+        };
+        res.end(JSON.stringify({
+          ok: true, home, away,
+          lambdaHome: lambdas.lambdaHome, lambdaAway: lambdas.lambdaAway,
+          poisson, elo, combined,
+          homeStats: { elo: homeStats.elo, form: homeStats.form, matches: homeStats.matches, hasData: homeStats.hasData },
+          awayStats: { elo: awayStats.elo, form: awayStats.form, matches: awayStats.matches, hasData: awayStats.hasData },
+          modelWeights: w,
+        }));
+      } catch (e) {
+        res.writeHead(500); res.end(JSON.stringify({ error: e.message }));
+      }
     } else if (urlObj.pathname === '/api/refresh' && ADMIN_IDS.includes(parseInt(urlObj.searchParams.get('userId')))) {
       matchesCache.today = { data: [], loadedAt: 0, dateKey: '' };
       matchesCache.upcoming = { data: [], loadedAt: 0, dateKey: '' };
@@ -1697,6 +1737,9 @@ startServer().then(() => {
   if (!DEMO_MODE) {
     setTimeout(() => refreshMatchesCache(), 2000);
     setInterval(() => refreshMatchesCache(), 2 * 60 * 60 * 1000);
+    // Collecte des stats historiques au démarrage puis toutes les 6h
+    setTimeout(() => collectRecentMatches(7).catch(e => console.error('[stats] erreur collecte:', e.message)), 10000);
+    setInterval(() => collectRecentMatches(2).catch(e => console.error('[stats] erreur collecte:', e.message)), 6 * 60 * 60 * 1000);
   }
   return launchBot();
 }).catch(e => {

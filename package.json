@@ -2,10 +2,10 @@
   "name": "baga-bet-bot",
   "version": "1.0.0",
   "description": "BAGA BET BOT – Bot Telegram d'analyse statistique sportive professionnelle",
-  "main": "index.js",
+  "main": "bot-single.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start": "node bot-single.js",
+    "dev": "nodemon bot-single.js"
   },
   "dependencies": {
     "telegraf": "^4.16.3",
