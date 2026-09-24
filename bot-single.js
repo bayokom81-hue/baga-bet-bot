@@ -1006,7 +1006,7 @@ bot.command('coupon', async (ctx) => {
 bot.command('profil', (ctx) => {
   const u = ctx.from;
   const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || 'N/A';
-  const prem = premiumUsers[u.id];
+  const prem = premiumUsers[String(u.id)] || premiumUsers[u.id];
   const isAdmin = ADMIN_IDS.includes(u.id);
 
   if (prem) {
