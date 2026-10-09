@@ -135,12 +135,20 @@ async function calibrateWeights() {
 
 // ── Combiner les probabilités avec les poids courants ─────────────
 
-async function combineProbabilities(poissonProbs, eloProbs) {
+async function combineProbabilities(poissonProbs, eloProbs, groqResult = null) {
   const w = await getCurrentWeights();
 
-  const pHome = poissonProbs.pHome * w.poisson + eloProbs.pHome * w.elo + 33.3 * w.groq;
-  const pDraw = poissonProbs.pDraw * w.poisson + eloProbs.pDraw * w.elo + 33.3 * w.groq;
-  const pAway = poissonProbs.pAway * w.poisson + eloProbs.pAway * w.elo + 33.3 * w.groq;
+  // Convertir le pronostic Groq en probabilités
+  let groqHome = 33.3, groqDraw = 33.3, groqAway = 33.3;
+  if (groqResult?.prono) {
+    if (groqResult.prono === '1') { groqHome = 65; groqDraw = 20; groqAway = 15; }
+    else if (groqResult.prono === 'N') { groqHome = 25; groqDraw = 50; groqAway = 25; }
+    else if (groqResult.prono === '2') { groqHome = 15; groqDraw = 20; groqAway = 65; }
+  }
+
+  const pHome = poissonProbs.pHome * w.poisson + eloProbs.pHome * w.elo + groqHome * w.groq;
+  const pDraw = poissonProbs.pDraw * w.poisson + eloProbs.pDraw * w.elo + groqDraw * w.groq;
+  const pAway = poissonProbs.pAway * w.poisson + eloProbs.pAway * w.elo + groqAway * w.groq;
 
   // Normaliser
   const total = pHome + pDraw + pAway;

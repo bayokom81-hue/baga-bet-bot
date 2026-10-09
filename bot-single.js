@@ -760,6 +760,38 @@ function generateCoupon(rawMatches, isPremium) {
   return data;
 }
 
+// ── Analyse Groq courte pour le coupon ───────────────────────────
+async function getGroqCouponAnalysis(home, away, stats) {
+  if (!GROQ_API_KEY) return null;
+  try {
+    const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+      model: 'llama3-8b-8192',
+      messages: [{
+        role: 'user',
+        content: `Tu es un expert en pronostics football. Analyse ce match en 2 phrases maximum en français.
+
+Match : ${home} vs ${away} (${stats.league || 'Football'})
+Probabilités statistiques : Domicile ${stats.pHome?.toFixed(1)}% | Nul ${stats.pDraw?.toFixed(1)}% | Extérieur ${stats.pAway?.toFixed(1)}%
+Cotes Elo : ${home} (${stats.eloHome}) vs ${away} (${stats.eloAway})
+
+Réponds UNIQUEMENT en JSON valide :
+{"prono":"1","explanation":"[2 phrases max expliquant pourquoi]"}
+prono = "1" (domicile), "N" (nul), "2" (extérieur)`
+      }],
+      max_tokens: 150,
+      temperature: 0.4,
+    }, {
+      headers: { Authorization: `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+      timeout: 8000,
+    });
+    const content = r.data?.choices?.[0]?.message?.content?.trim();
+    const json = JSON.parse(content.match(/\{[\s\S]*\}/)?.[0] || '{}');
+    return json.prono && json.explanation ? json : null;
+  } catch(e) {
+    return null;
+  }
+}
+
 // ── Coupon V2 : pronostics basés sur Poisson + Elo ────────────────
 async function generateCouponV2(rawMatches, isPremium) {
   const today = new Date().toLocaleDateString('fr-FR');
@@ -791,8 +823,18 @@ async function generateCouponV2(rawMatches, isPremium) {
       const poisson = matchProbabilities(lambdas.lambdaHome, lambdas.lambdaAway);
       const elo = eloProbabilities(homeStats.elo, awayStats.elo);
 
-      // Combinaison avec poids calibrés automatiquement
-      const combined = await combineProbabilities(poisson, elo);
+      // Appel Groq pour analyse IA (en parallèle, non bloquant)
+      let groqResult = null;
+      if (GROQ_API_KEY) {
+        groqResult = await getGroqCouponAnalysis(m.home, m.away, {
+          pHome: poisson.pHome, pDraw: poisson.pDraw, pAway: poisson.pAway,
+          eloHome: homeStats.elo, eloAway: awayStats.elo,
+          league: m.league,
+        }).catch(() => null);
+      }
+
+      // Combinaison avec poids calibrés + Groq si disponible
+      const combined = await combineProbabilities(poisson, elo, groqResult);
       const { pHome, pDraw, pAway, weights: usedWeights } = combined;
 
       // Choisir le pronostic le plus probable
@@ -803,7 +845,6 @@ async function generateCouponV2(rawMatches, isPremium) {
 
       // Cote estimée à partir de la probabilité (avec marge bookmaker ~10%)
       const impliedOdds = Math.max(1.1, parseFloat((100 / (confidence * 0.90)).toFixed(2)));
-      // Cote arrondie aux valeurs réalistes
       const cotesDisponibles = COTES_BASE[prono];
       const cote = cotesDisponibles.reduce((prev, curr) =>
         Math.abs(curr - impliedOdds) < Math.abs(prev - impliedOdds) ? curr : prev
@@ -825,6 +866,8 @@ async function generateCouponV2(rawMatches, isPremium) {
         lambdaHome: lambdas.lambdaHome,
         lambdaAway: lambdas.lambdaAway,
         hasStats: homeStats.hasData && awayStats.hasData,
+        aiAnalysis: groqResult?.explanation || null,
+        aiProno: groqResult?.prono || null,
       };
     } catch (e) {
       // Fallback sur l'ancienne méthode si erreur
@@ -1009,6 +1052,9 @@ bot.command('coupon', async (ctx) => {
         text += `\n`;
         if (isPremium && m.hasStats) {
           text += `   📈 Over 2.5 : ${m.over25}% | 🎯 BTTS : ${m.btts}%\n`;
+        }
+        if (isPremium && m.aiAnalysis) {
+          text += `   🤖 _${m.aiAnalysis}_\n`;
         }
       }
       text += `\n`;
