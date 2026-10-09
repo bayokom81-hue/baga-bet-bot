@@ -251,12 +251,17 @@ const FD_COMPETITIONS = ['PL','PD','BL1','SA','FL1','CL','EL','EC','WC','PPL','D
 async function fdMatchesToNorm(dateStr) {
   if (!FOOTBALL_DATA_KEY) return [];
   try {
-    const r = await axios.get(`https://api.football-data.org/v4/matches?dateFrom=${dateStr}&dateTo=${dateStr}`, {
+    // dateTo = dateStr+1 pour éviter le bug timezone de football-data.org
+    const nextDay = new Date(dateStr); nextDay.setDate(nextDay.getDate() + 1);
+    const dateTo = nextDay.toISOString().substring(0, 10);
+    const r = await axios.get(`https://api.football-data.org/v4/matches?dateFrom=${dateStr}&dateTo=${dateTo}`, {
       headers: { 'X-Auth-Token': FOOTBALL_DATA_KEY },
       timeout: 15000,
     });
-    const matches = r.data?.matches || [];
-    console.log(`FD [${dateStr}]: ${matches.length} matchs`);
+    const allMatches = r.data?.matches || [];
+    // Filtrer uniquement les matchs du jour demandé (pas ceux du lendemain)
+    const matches = allMatches.filter(m => m.utcDate?.substring(0, 10) === dateStr);
+    console.log(`FD [${dateStr}]: ${matches.length} matchs (sur ${allMatches.length} récupérés)`);
     return matches.map(m => {
       const isLive = m.status === 'IN_PLAY' || m.status === 'PAUSED';
       const isFinished = m.status === 'FINISHED';
