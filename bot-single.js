@@ -1510,13 +1510,18 @@ async function handleApi(req, res, urlObj) {
     if (urlObj.pathname === '/api/test-groq') {
       if (!GROQ_API_KEY) return res.end(JSON.stringify({ ok: false, error: 'GROQ_API_KEY non défini' }));
       try {
+        const mods = await axios.get('https://api.groq.com/openai/v1/models', { headers: { Authorization: `Bearer ${GROQ_API_KEY}` }, timeout: 10000 });
+        const models = mods.data?.data?.map(m => m.id) || [];
+        // Choisir le meilleur modèle LLaMA disponible
+        const preferred = ['llama-3.3-70b-versatile','llama-3.1-8b-instant','llama3-8b-8192','llama3-70b-8192'];
+        const model = preferred.find(p => models.includes(p)) || models.find(m => m.includes('llama')) || models[0];
         const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-          model: 'openai/gpt-oss-20b',
-          messages: [{ role: 'user', content: 'Réponds uniquement en JSON: {"prono":"1","explanation":"Dortmund favori à domicile."}' }],
-          max_tokens: 100, temperature: 0.1,
+          model,
+          messages: [{ role: 'user', content: 'Say exactly: {"prono":"1","explanation":"Test ok."}' }],
+          max_tokens: 50, temperature: 0.1,
         }, { headers: { Authorization: `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' }, timeout: 10000 });
         const raw = r.data?.choices?.[0]?.message?.content;
-        res.end(JSON.stringify({ ok: true, raw, key_prefix: GROQ_API_KEY.substring(0, 8) + '...' }));
+        res.end(JSON.stringify({ ok: true, raw, model, models, key_prefix: GROQ_API_KEY.substring(0, 8) + '...' }));
       } catch(e) {
         res.end(JSON.stringify({ ok: false, error: e.message, status: e.response?.status, detail: e.response?.data?.error }));
       }
