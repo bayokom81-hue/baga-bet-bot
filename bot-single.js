@@ -1741,11 +1741,23 @@ async function handleApi(req, res, urlObj) {
       } catch (e) {
         res.writeHead(500); res.end(JSON.stringify({ error: e.message }));
       }
-    } else if (urlObj.pathname === '/api/refresh' && ADMIN_IDS.includes(parseInt(urlObj.searchParams.get('userId')))) {
+    } else if (urlObj.pathname === '/api/refresh') {
       matchesCache.today = { data: [], loadedAt: 0, dateKey: '' };
       matchesCache.upcoming = { data: [], loadedAt: 0, dateKey: '' };
       await refreshMatchesCache();
       res.end(JSON.stringify({ ok: true, today: matchesCache.today.data.length, upcoming: matchesCache.upcoming.data.length }));
+    } else if (urlObj.pathname === '/api/debug') {
+      // Diagnostic: teste les sources de matchs et retourne les résultats
+      const today = new Date().toISOString().split('T')[0];
+      const results = {};
+      try { results.fd = (await fdMatchesToNorm(today)).length; } catch(e) { results.fd_err = e.message; }
+      try { results.espn = (await espnMatchesToNorm(today)).length; } catch(e) { results.espn_err = e.message; }
+      results.cache_today = matchesCache.today.data.length;
+      results.cache_upcoming = matchesCache.upcoming.data.length;
+      results.fd_key = !!FOOTBALL_DATA_KEY;
+      results.supabase = !!SUPABASE_URL;
+      results.today = today;
+      res.end(JSON.stringify(results));
     } else if (urlObj.pathname === '/api/profil') {
       const userId = urlObj.searchParams.get('userId');
       const isAdmin = ADMIN_IDS.includes(parseInt(userId));
