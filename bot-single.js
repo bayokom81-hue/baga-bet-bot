@@ -1268,7 +1268,10 @@ bot.command('verifier', async (ctx) => {
 
 // /activer [userId] [planKey] — admin active le premium
 bot.command('activer', async (ctx) => {
-  if (!ADMIN_IDS.includes(ctx.from?.id)) return ctx.reply('⛔ Accès réservé aux administrateurs.');
+  const fromId = ctx.from?.id;
+  if (!ADMIN_IDS.includes(fromId)) {
+    return ctx.reply(`⛔ Accès refusé. Ton ID: ${fromId} (${typeof fromId}). Admins: ${JSON.stringify(ADMIN_IDS)}`);
+  }
   const parts = ctx.message?.text?.split(' ');
   const targetId = parseInt(parts[1]);
   const planKey = parts[2] || 'mensuel';
