@@ -1418,6 +1418,31 @@ bot.on('message', async (ctx) => {
     return;
   }
 
+  // Message de bienvenue pour tout texte libre (bonjour, salut, etc.)
+  const text = ctx.message?.text?.toLowerCase().trim() || '';
+  const greetings = ['bonjour', 'bonsoir', 'salut', 'hello', 'hi', 'yo', 'salam', 'bjr', 'bsr', 'coucou', 'allô', 'allo'];
+  if (greetings.some(g => text.startsWith(g) || text === g)) {
+    const name = ctx.from?.first_name || 'ami';
+    return ctx.replyWithMarkdown(
+      `👋 *Bonjour ${name} !*\n\n` +
+      `Bienvenue sur *BetAnalyse* — le bot d'analyse statistique pour vos paris sportifs.\n\n` +
+      `⚽ *Ce que je fais :*\n` +
+      `• Coupon du jour avec pronostics analysés\n` +
+      `• Probabilités calculées (Poisson + Elo)\n` +
+      `• Scores prédits, Over 2.5, BTTS\n` +
+      `• Analyse de n'importe quelle équipe\n\n` +
+      `📋 *Commandes principales :*\n` +
+      `▶️ /coupon — Coupon du jour\n` +
+      `▶️ /matchs — Matchs du jour\n` +
+      `▶️ /analyse NomEquipe — Analyse une équipe\n` +
+      `▶️ /premium — Voir les offres Premium\n` +
+      `▶️ /profil — Mon profil\n` +
+      `▶️ /help — Toutes les commandes\n\n` +
+      `💎 *Premium à partir de 2 500 XOF/mois*\n` +
+      `_Tape /premium pour t'abonner_`
+    );
+  }
+
   ctx.reply('❓ Commande inconnue. Tapez /help');
 });
 
