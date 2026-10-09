@@ -977,22 +977,39 @@ bot.command('coupon', async (ctx) => {
     const coupon = await generateCouponV2(matches, isPremium);
     const LABELS = { '1': 'Domicile', 'N': 'Nul', '2': 'Extérieur' };
     const STAR_ICONS = { 3: '🔥', 2: '⭐', 1: '📊' };
+    const LEAGUE_FLAGS = {
+      'Premier League': '🏴󠁧󠁢󠁥󠁮󠁧󠁿', 'La Liga': '🇪🇸', 'Primera Division': '🇪🇸',
+      'Bundesliga': '🇩🇪', 'Serie A': '🇮🇹', 'Ligue 1': '🇫🇷',
+      'Champions League': '🏆', 'Europa League': '🟠', 'Eredivisie': '🇳🇱',
+      'Primeira Liga': '🇵🇹', 'Championship': '🏴󠁧󠁢󠁥󠁮󠁧󠁿', 'Brasileirão': '🇧🇷',
+      'Campeonato Brasileiro Série A': '🇧🇷',
+    };
 
     let text = `🎯 *Coupon BetAnalyse — ${coupon.date}*\n`;
     text += isPremium ? `💎 _${coupon.matches.length} matchs • Analyse Poisson+Elo_\n\n` : `🆓 _4 matchs • Passez Premium pour 8+ matchs_\n\n`;
 
+    // Grouper par championnat
+    const grouped = {};
     for (const m of coupon.matches) {
-      const icon = STAR_ICONS[m.stars] || '📊';
-      text += `${icon} *${m.home} vs ${m.away}*\n`;
-      text += `🏆 ${m.league || ''} | 🕐 ${m.time}\n`;
-      text += `📌 *${m.prono}* — ${LABELS[m.prono] || m.label}`;
-      if (m.confidence) text += ` _(${m.confidence}%)_`;
-      text += `\n`;
-      text += `💰 Cote estimée : *${m.cote}*`;
-      if (m.predictedScore && m.hasStats) text += ` | Score prédit : *${m.predictedScore}*`;
-      text += `\n`;
-      if (isPremium && m.hasStats) {
-        text += `📈 Over 2.5 : ${m.over25}% | 🎯 BTTS : ${m.btts}%\n`;
+      const key = m.league || 'Autre';
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(m);
+    }
+
+    for (const [league, leagueMatches] of Object.entries(grouped)) {
+      const flag = LEAGUE_FLAGS[league] || '⚽';
+      text += `${flag} *${league}*\n`;
+      for (const m of leagueMatches) {
+        const icon = STAR_ICONS[m.stars] || '📊';
+        text += `${icon} *${m.home} vs ${m.away}* — 🕐 ${m.time}\n`;
+        text += `   📌 *${m.prono}* — ${LABELS[m.prono] || m.label}`;
+        if (m.confidence) text += ` _(${m.confidence}%)_`;
+        text += ` • 💰 *${m.cote}*`;
+        if (m.predictedScore && m.hasStats) text += ` • Score : *${m.predictedScore}*`;
+        text += `\n`;
+        if (isPremium && m.hasStats) {
+          text += `   📈 Over 2.5 : ${m.over25}% | 🎯 BTTS : ${m.btts}%\n`;
+        }
       }
       text += `\n`;
     }

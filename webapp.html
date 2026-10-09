@@ -730,7 +730,30 @@ function buildCouponHtml(d, showHistoryBtn) {
     ${isV2 ? `<div style="font-size:10px;color:var(--accent);margin-top:5px;letter-spacing:.3px">⚡ Analyse Poisson + Elo · ${d.matches.length} matchs</div>` : ''}
   </div>`;
 
+  const LEAGUE_FLAGS = {
+    'Premier League':'🏴󠁧󠁢󠁥󠁮󠁧󠁿','La Liga':'🇪🇸','Primera Division':'🇪🇸',
+    'Bundesliga':'🇩🇪','Serie A':'🇮🇹','Ligue 1':'🇫🇷',
+    'Champions League':'🏆','Europa League':'🟠','Eredivisie':'🇳🇱',
+    'Primeira Liga':'🇵🇹','Championship':'🏴󠁧󠁢󠁥󠁮󠁧󠁿',
+    'Campeonato Brasileiro Série A':'🇧🇷','Brasileirão':'🇧🇷',
+  };
+
+  // Grouper les matchs par championnat
+  const grouped = {};
   for (const m of d.matches) {
+    const key = m.league || 'Autre';
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(m);
+  }
+
+  for (const [league, leagueMatches] of Object.entries(grouped)) {
+    const flag = LEAGUE_FLAGS[league] || '⚽';
+    html += `<div style="display:flex;align-items:center;gap:8px;margin:16px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)">
+      <span style="font-size:18px">${flag}</span>
+      <span style="font-size:12px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:.5px">${league}</span>
+    </div>`;
+
+  for (const m of leagueMatches) {
     const cls = m.prono === '1' ? 'p1' : m.prono === 'N' ? 'pN' : 'p2';
     const conf = m.confidence || null;
     const hasStats = m.hasStats && isV2;
@@ -803,7 +826,8 @@ function buildCouponHtml(d, showHistoryBtn) {
     }
 
     html += `</div>`;
-  }
+  } // fin for leagueMatches
+  } // fin for grouped
 
   html += `<div class="coupon-total">
     <div class="coupon-total-label">Cote combinée</div>
