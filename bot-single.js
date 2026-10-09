@@ -707,7 +707,7 @@ Commence par "🔮 Analyse :" et termine par "💡 Recommandation :" suivi d'une
 
   try {
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: 'openai/gpt-oss-20b',
+      model: GROQ_API_KEY ? (process.env.GROQ_MODEL || 'openai/gpt-oss-120b') : 'openai/gpt-oss-120b',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 400,
       temperature: 0.7,
@@ -765,7 +765,7 @@ async function getGroqCouponAnalysis(home, away, stats) {
   if (!GROQ_API_KEY) return null;
   try {
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: 'openai/gpt-oss-20b',
+      model: GROQ_API_KEY ? (process.env.GROQ_MODEL || 'openai/gpt-oss-120b') : 'openai/gpt-oss-120b',
       messages: [{
         role: 'user',
         content: `Tu es un expert en pronostics football. Analyse ce match en 2 phrases maximum en français.
@@ -1513,8 +1513,8 @@ async function handleApi(req, res, urlObj) {
         const mods = await axios.get('https://api.groq.com/openai/v1/models', { headers: { Authorization: `Bearer ${GROQ_API_KEY}` }, timeout: 10000 });
         const models = mods.data?.data?.map(m => m.id) || [];
         // Choisir le meilleur modèle LLaMA disponible
-        const preferred = ['llama-3.3-70b-versatile','llama-3.1-8b-instant','llama3-8b-8192','llama3-70b-8192'];
-        const model = preferred.find(p => models.includes(p)) || models.find(m => m.includes('llama')) || models[0];
+        const preferred = ['llama-3.3-70b-versatile','llama-3.1-8b-instant','llama3-8b-8192','openai/gpt-oss-120b','openai/gpt-oss-20b'];
+        const model = preferred.find(p => models.includes(p)) || models[0];
         const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
           model,
           messages: [{ role: 'user', content: 'Say exactly: {"prono":"1","explanation":"Test ok."}' }],
