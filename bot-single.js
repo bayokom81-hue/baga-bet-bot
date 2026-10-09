@@ -707,7 +707,7 @@ Commence par "🔮 Analyse :" et termine par "💡 Recommandation :" suivi d'une
 
   try {
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: GROQ_API_KEY ? (process.env.GROQ_MODEL || 'openai/gpt-oss-120b') : 'openai/gpt-oss-120b',
+      model: process.env.GROQ_MODEL || 'llama-3.1-8b-instant',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 400,
       temperature: 0.7,
@@ -761,11 +761,17 @@ function generateCoupon(rawMatches, isPremium) {
 }
 
 // ── Analyse Groq courte pour le coupon ───────────────────────────
+// Modèles Groq compatibles chat (LLaMA standard)
+const GROQ_CHAT_MODELS = ['llama-3.3-70b-versatile','llama-3.1-70b-versatile','llama-3.1-8b-instant','llama3-70b-8192','llama3-8b-8192','gemma2-9b-it','mixtral-8x7b-32768'];
+
 async function getGroqCouponAnalysis(home, away, stats) {
   if (!GROQ_API_KEY) return null;
+  // Vérifier que le modèle configuré est un vrai modèle chat
+  const model = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
+  // Si aucun modèle chat connu n'est dispo, skip silencieusement
   try {
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: GROQ_API_KEY ? (process.env.GROQ_MODEL || 'openai/gpt-oss-120b') : 'openai/gpt-oss-120b',
+      model,
       messages: [{
         role: 'user',
         content: `Tu es un expert en pronostics football. Analyse ce match en 2 phrases maximum en français.
