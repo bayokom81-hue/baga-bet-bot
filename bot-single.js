@@ -1507,7 +1507,15 @@ async function handleApi(req, res, urlObj) {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Access-Control-Allow-Origin', '*');
   try {
-    if (urlObj.pathname === '/api/cache-status') {
+    if (urlObj.pathname === '/api/test-groq') {
+      if (!GROQ_API_KEY) return res.end(JSON.stringify({ ok: false, error: 'GROQ_API_KEY non défini' }));
+      try {
+        const result = await getGroqCouponAnalysis('Dortmund', 'Bremen', { pHome: 54, pDraw: 25, pAway: 21, eloHome: 1550, eloAway: 1480, league: 'Bundesliga' });
+        res.end(JSON.stringify({ ok: true, result, key_prefix: GROQ_API_KEY.substring(0, 8) + '...' }));
+      } catch(e) {
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    } else if (urlObj.pathname === '/api/cache-status') {
       return res.end(JSON.stringify({
         ok: true,
         loading: matchesCache.loading,
