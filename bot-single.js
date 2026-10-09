@@ -707,7 +707,7 @@ Commence par "🔮 Analyse :" et termine par "💡 Recommandation :" suivi d'une
 
   try {
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: 'llama3-8b-8192',
+      model: 'llama-3.1-8b-instant',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 400,
       temperature: 0.7,
@@ -765,7 +765,7 @@ async function getGroqCouponAnalysis(home, away, stats) {
   if (!GROQ_API_KEY) return null;
   try {
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: 'llama3-8b-8192',
+      model: 'llama-3.1-8b-instant',
       messages: [{
         role: 'user',
         content: `Tu es un expert en pronostics football. Analyse ce match en 2 phrases maximum en français.
@@ -1511,7 +1511,7 @@ async function handleApi(req, res, urlObj) {
       if (!GROQ_API_KEY) return res.end(JSON.stringify({ ok: false, error: 'GROQ_API_KEY non défini' }));
       try {
         const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-          model: 'llama3-8b-8192',
+          model: 'llama-3.1-8b-instant',
           messages: [{ role: 'user', content: 'Réponds uniquement: {"prono":"1","explanation":"Dortmund favori à domicile."}' }],
           max_tokens: 100, temperature: 0.1,
         }, { headers: { Authorization: `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' }, timeout: 10000 });
