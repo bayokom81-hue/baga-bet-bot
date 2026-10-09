@@ -1510,15 +1510,13 @@ async function handleApi(req, res, urlObj) {
     if (urlObj.pathname === '/api/test-groq') {
       if (!GROQ_API_KEY) return res.end(JSON.stringify({ ok: false, error: 'GROQ_API_KEY non défini' }));
       try {
-        const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-          model: 'llama-3.1-8b-instant',
-          messages: [{ role: 'user', content: 'Réponds uniquement: {"prono":"1","explanation":"Dortmund favori à domicile."}' }],
-          max_tokens: 100, temperature: 0.1,
-        }, { headers: { Authorization: `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' }, timeout: 10000 });
-        const raw = r.data?.choices?.[0]?.message?.content;
-        res.end(JSON.stringify({ ok: true, raw, key_prefix: GROQ_API_KEY.substring(0, 8) + '...' }));
+        const r = await axios.get('https://api.groq.com/openai/v1/models', {
+          headers: { Authorization: `Bearer ${GROQ_API_KEY}` }, timeout: 10000
+        });
+        const models = r.data?.data?.map(m => m.id) || [];
+        res.end(JSON.stringify({ ok: true, models, key_prefix: GROQ_API_KEY.substring(0, 8) + '...' }));
       } catch(e) {
-        res.end(JSON.stringify({ ok: false, error: e.message, status: e.response?.status }));
+        res.end(JSON.stringify({ ok: false, error: e.message, status: e.response?.status, detail: e.response?.data }));
       }
     } else if (urlObj.pathname === '/api/cache-status') {
       return res.end(JSON.stringify({
