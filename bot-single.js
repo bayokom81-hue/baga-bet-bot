@@ -418,7 +418,9 @@ async function refreshMatchesCache() {
         }
       }
       console.log(`Cache matchs API-Football: ${todayAll.length} aujourd'hui, ${upcomingAll.length} à venir`);
-    } else {
+    }
+    // Toujours utiliser FD+ESPN en complément (ou si APISPORTS vide)
+    if (!APISPORTS_KEY || todayAll.length === 0) {
       // ── Sources 2+3 en parallèle : football-data.org + ESPN ──────
       const nextDates = [1, 2, 3].map(d => { const dt = new Date(); dt.setDate(dt.getDate() + d); return dt.toISOString().split('T')[0]; });
       const [fdToday, espnToday, ...rest] = await Promise.all([
