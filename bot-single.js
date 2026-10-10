@@ -14,6 +14,7 @@ const { getCurrentWeights, calibrateWeights, combineProbabilities } = require('.
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(id => parseInt(id.trim())).filter(Boolean);
 const APISPORTS_KEY = process.env.APISPORTS_KEY || '';
 const FOOTBALL_DATA_KEY = process.env.FOOTBALL_DATA_KEY || '';
@@ -760,32 +761,20 @@ function generateCoupon(rawMatches, isPremium) {
   return data;
 }
 
-// ── Analyse Groq courte pour le coupon ───────────────────────────
-// Modèles Groq compatibles chat (LLaMA standard)
+// ── Analyse IA courte pour le coupon (Groq ou Gemini) ────────────
 const GROQ_CHAT_MODELS = ['llama-3.3-70b-versatile','llama-3.1-70b-versatile','llama-3.1-8b-instant','llama3-70b-8192','llama3-8b-8192','gemma2-9b-it','mixtral-8x7b-32768'];
+
+const AI_PROMPT = (home, away, stats) =>
+  `Tu es un expert en pronostics football. Analyse ce match en 2 phrases max en français.\n\nMatch : ${home} vs ${away} (${stats.league || 'Football'})\nProbabilités : Domicile ${stats.pHome?.toFixed(1)}% | Nul ${stats.pDraw?.toFixed(1)}% | Extérieur ${stats.pAway?.toFixed(1)}%\nElo : ${home} (${stats.eloHome}) vs ${away} (${stats.eloAway})\n\nRéponds UNIQUEMENT en JSON valide :\n{"prono":"1","explanation":"[2 phrases max]"}\nprono = "1" (domicile), "N" (nul), "2" (extérieur)`;
 
 async function getGroqCouponAnalysis(home, away, stats) {
   if (!GROQ_API_KEY) return null;
   const model = process.env.GROQ_MODEL || '';
-  // Uniquement les vrais modèles chat LLaMA/Gemma/Mixtral
   if (!GROQ_CHAT_MODELS.includes(model)) return null;
-  // Vérifier que le modèle configuré est un vrai modèle chat
-  // Si aucun modèle chat connu n'est dispo, skip silencieusement
   try {
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
       model,
-      messages: [{
-        role: 'user',
-        content: `Tu es un expert en pronostics football. Analyse ce match en 2 phrases maximum en français.
-
-Match : ${home} vs ${away} (${stats.league || 'Football'})
-Probabilités statistiques : Domicile ${stats.pHome?.toFixed(1)}% | Nul ${stats.pDraw?.toFixed(1)}% | Extérieur ${stats.pAway?.toFixed(1)}%
-Cotes Elo : ${home} (${stats.eloHome}) vs ${away} (${stats.eloAway})
-
-Réponds UNIQUEMENT en JSON valide :
-{"prono":"1","explanation":"[2 phrases max expliquant pourquoi]"}
-prono = "1" (domicile), "N" (nul), "2" (extérieur)`
-      }],
+      messages: [{ role: 'user', content: AI_PROMPT(home, away, stats) }],
       max_tokens: 150,
       temperature: 0.4,
     }, {
@@ -795,9 +784,29 @@ prono = "1" (domicile), "N" (nul), "2" (extérieur)`
     const content = r.data?.choices?.[0]?.message?.content?.trim();
     const json = JSON.parse(content.match(/\{[\s\S]*\}/)?.[0] || '{}');
     return json.prono && json.explanation ? json : null;
-  } catch(e) {
-    return null;
-  }
+  } catch(e) { return null; }
+}
+
+async function getGeminiCouponAnalysis(home, away, stats) {
+  if (!GEMINI_API_KEY) return null;
+  try {
+    const r = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      { contents: [{ parts: [{ text: AI_PROMPT(home, away, stats) }] }] },
+      { headers: { 'Content-Type': 'application/json' }, timeout: 10000 }
+    );
+    const content = r.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!content) return null;
+    const json = JSON.parse(content.match(/\{[\s\S]*\}/)?.[0] || '{}');
+    return json.prono && json.explanation ? json : null;
+  } catch(e) { return null; }
+}
+
+async function getAICouponAnalysis(home, away, stats) {
+  // Essayer Groq d'abord, puis Gemini en fallback
+  const groq = await getGroqCouponAnalysis(home, away, stats);
+  if (groq) return groq;
+  return getGeminiCouponAnalysis(home, away, stats);
 }
 
 // ── Coupon V2 : pronostics basés sur Poisson + Elo ────────────────
@@ -831,10 +840,10 @@ async function generateCouponV2(rawMatches, isPremium) {
       const poisson = matchProbabilities(lambdas.lambdaHome, lambdas.lambdaAway);
       const elo = eloProbabilities(homeStats.elo, awayStats.elo);
 
-      // Appel Groq pour analyse IA (en parallèle, non bloquant)
+      // Appel IA pour analyse (Groq ou Gemini en fallback)
       let groqResult = null;
-      if (GROQ_API_KEY) {
-        groqResult = await getGroqCouponAnalysis(m.home, m.away, {
+      if (GROQ_API_KEY || GEMINI_API_KEY) {
+        groqResult = await getAICouponAnalysis(m.home, m.away, {
           pHome: poisson.pHome, pDraw: poisson.pDraw, pAway: poisson.pAway,
           eloHome: homeStats.elo, eloAway: awayStats.elo,
           league: m.league,
@@ -1530,6 +1539,19 @@ async function handleApi(req, res, urlObj) {
         }, { headers: { Authorization: `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' }, timeout: 10000 });
         const raw = r.data?.choices?.[0]?.message?.content;
         res.end(JSON.stringify({ ok: true, raw, model, models, key_prefix: GROQ_API_KEY.substring(0, 8) + '...' }));
+      } catch(e) {
+        res.end(JSON.stringify({ ok: false, error: e.message, status: e.response?.status, detail: e.response?.data?.error }));
+      }
+    } else if (urlObj.pathname === '/api/test-gemini') {
+      if (!GEMINI_API_KEY) return res.end(JSON.stringify({ ok: false, error: 'GEMINI_API_KEY non défini' }));
+      try {
+        const r = await axios.post(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+          { contents: [{ parts: [{ text: 'Say exactly: {"prono":"1","explanation":"Test ok."}' }] }] },
+          { headers: { 'Content-Type': 'application/json' }, timeout: 10000 }
+        );
+        const raw = r.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        res.end(JSON.stringify({ ok: true, raw, model: 'gemini-1.5-flash', key_prefix: GEMINI_API_KEY.substring(0, 8) + '...' }));
       } catch(e) {
         res.end(JSON.stringify({ ok: false, error: e.message, status: e.response?.status, detail: e.response?.data?.error }));
       }
