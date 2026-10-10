@@ -766,8 +766,10 @@ const GROQ_CHAT_MODELS = ['llama-3.3-70b-versatile','llama-3.1-70b-versatile','l
 
 async function getGroqCouponAnalysis(home, away, stats) {
   if (!GROQ_API_KEY) return null;
+  const model = process.env.GROQ_MODEL || '';
+  // Uniquement les vrais modèles chat LLaMA/Gemma/Mixtral
+  if (!GROQ_CHAT_MODELS.includes(model)) return null;
   // Vérifier que le modèle configuré est un vrai modèle chat
-  const model = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
   // Si aucun modèle chat connu n'est dispo, skip silencieusement
   try {
     const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
