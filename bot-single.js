@@ -787,11 +787,14 @@ async function getGroqCouponAnalysis(home, away, stats) {
   } catch(e) { return null; }
 }
 
+const GEMINI_MODELS = ['gemini-1.5-flash','gemini-1.5-pro','gemini-pro','gemini-2.0-flash'];
+
 async function getGeminiCouponAnalysis(home, away, stats) {
   if (!GEMINI_API_KEY) return null;
+  const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
   try {
     const r = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
       { contents: [{ parts: [{ text: AI_PROMPT(home, away, stats) }] }] },
       { headers: { 'Content-Type': 'application/json' }, timeout: 10000 }
     );
@@ -1545,13 +1548,21 @@ async function handleApi(req, res, urlObj) {
     } else if (urlObj.pathname === '/api/test-gemini') {
       if (!GEMINI_API_KEY) return res.end(JSON.stringify({ ok: false, error: 'GEMINI_API_KEY non défini' }));
       try {
+        // Lister les modèles disponibles
+        const listR = await axios.get(
+          `https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`,
+          { timeout: 10000 }
+        );
+        const models = (listR.data?.models || []).map(m => m.name?.replace('models/', ''));
+        const preferred = ['gemini-2.0-flash','gemini-1.5-flash','gemini-1.5-pro','gemini-pro'];
+        const model = process.env.GEMINI_MODEL || preferred.find(p => models.includes(p)) || models[0];
         const r = await axios.post(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
           { contents: [{ parts: [{ text: 'Say exactly: {"prono":"1","explanation":"Test ok."}' }] }] },
           { headers: { 'Content-Type': 'application/json' }, timeout: 10000 }
         );
         const raw = r.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-        res.end(JSON.stringify({ ok: true, raw, model: 'gemini-1.5-flash', key_prefix: GEMINI_API_KEY.substring(0, 8) + '...' }));
+        res.end(JSON.stringify({ ok: true, raw, model, models, key_prefix: GEMINI_API_KEY.substring(0, 8) + '...' }));
       } catch(e) {
         res.end(JSON.stringify({ ok: false, error: e.message, status: e.response?.status, detail: e.response?.data?.error }));
       }
