@@ -806,10 +806,57 @@ async function getGeminiCouponAnalysis(home, away, stats) {
 }
 
 async function getAICouponAnalysis(home, away, stats) {
-  // Essayer Groq d'abord, puis Gemini en fallback
   const groq = await getGroqCouponAnalysis(home, away, stats);
   if (groq) return groq;
   return getGeminiCouponAnalysis(home, away, stats);
+}
+
+// ── Analyse IA globale : 1 seul appel pour tout le coupon ─────────
+async function getAICouponBatch(matches) {
+  if (!GROQ_API_KEY && !GEMINI_API_KEY) return {};
+  try {
+    const lines = matches.map((m, i) =>
+      `${i+1}. ${m.home} vs ${m.away} (${m.league||'Football'}) — Dom:${m.pHome?.toFixed(1)}% Nul:${m.pDraw?.toFixed(1)}% Ext:${m.pAway?.toFixed(1)}% | Elo dom:${m.eloHome} ext:${m.eloAway}`
+    ).join('\n');
+    const prompt = `Tu es un expert en pronostics football. Pour chaque match ci-dessous, donne un pronostic et une explication courte (max 1 phrase) en français.\n\nMatchs :\n${lines}\n\nRéponds UNIQUEMENT en JSON valide, tableau avec exactement ${matches.length} objets :\n[{"prono":"1","explanation":"..."},{"prono":"N","explanation":"..."},...]\nprono = "1" (domicile gagne), "N" (nul), "2" (extérieur gagne)`;
+
+    let content = null;
+
+    // Essayer Groq
+    if (GROQ_API_KEY) {
+      const model = process.env.GROQ_MODEL || '';
+      if (GROQ_CHAT_MODELS.includes(model)) {
+        const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+          model, messages: [{ role: 'user', content: prompt }], max_tokens: 800, temperature: 0.4,
+        }, { headers: { Authorization: `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' }, timeout: 15000 });
+        content = r.data?.choices?.[0]?.message?.content?.trim();
+      }
+    }
+
+    // Fallback Gemini
+    if (!content && GEMINI_API_KEY) {
+      const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+      const r = await axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+        { contents: [{ parts: [{ text: prompt }] }] },
+        { headers: { 'Content-Type': 'application/json' }, timeout: 15000 }
+      );
+      content = r.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    }
+
+    if (!content) return {};
+    const arr = JSON.parse(content.match(/\[[\s\S]*\]/)?.[0] || '[]');
+    const result = {};
+    matches.forEach((m, i) => {
+      if (arr[i]?.prono && arr[i]?.explanation) {
+        result[`${m.home}|${m.away}`] = arr[i];
+      }
+    });
+    return result;
+  } catch(e) {
+    console.error('[AI batch]', e.message);
+    return {};
+  }
 }
 
 // ── Coupon V2 : pronostics basés sur Poisson + Elo ────────────────
@@ -829,51 +876,31 @@ async function generateCouponV2(rawMatches, isPremium) {
 
   const COTES_BASE = { '1': [1.5, 1.6, 1.7, 1.8, 2.0], 'N': [3.0, 3.2, 3.4, 3.5], '2': [1.8, 2.0, 2.2, 2.5, 3.0] };
 
+  // Étape 1 : calculer Poisson + Elo pour tous les matchs
+  const LABELS = { '1': 'Domicile gagne', 'N': 'Match nul', '2': 'Extérieur gagne' };
   const enriched = await Promise.all(pool.map(async (m) => {
     try {
       const [homeStats, awayStats] = await Promise.all([
         getTeamStatsForPrediction(m.home),
         getTeamStatsForPrediction(m.away),
       ]);
-
       const lambdas = calculateLambdas(
         { goalsScored: homeStats.goalsScored, goalsConceded: homeStats.goalsConceded, matches: Math.max(homeStats.matches, 1) },
         { goalsScored: awayStats.goalsScored, goalsConceded: awayStats.goalsConceded, matches: Math.max(awayStats.matches, 1) }
       );
       const poisson = matchProbabilities(lambdas.lambdaHome, lambdas.lambdaAway);
       const elo = eloProbabilities(homeStats.elo, awayStats.elo);
-
-      // Appel IA pour analyse (Groq ou Gemini en fallback)
-      let groqResult = null;
-      if (GROQ_API_KEY || GEMINI_API_KEY) {
-        groqResult = await getAICouponAnalysis(m.home, m.away, {
-          pHome: poisson.pHome, pDraw: poisson.pDraw, pAway: poisson.pAway,
-          eloHome: homeStats.elo, eloAway: awayStats.elo,
-          league: m.league,
-        }).catch(() => null);
-      }
-
-      // Combinaison avec poids calibrés + Groq si disponible
-      const combined = await combineProbabilities(poisson, elo, groqResult);
-      const { pHome, pDraw, pAway, weights: usedWeights } = combined;
-
-      // Choisir le pronostic le plus probable
+      const combined = await combineProbabilities(poisson, elo, null);
+      const { pHome, pDraw, pAway } = combined;
       let prono, confidence;
       if (pHome >= pDraw && pHome >= pAway) { prono = '1'; confidence = pHome; }
       else if (pDraw >= pHome && pDraw >= pAway) { prono = 'N'; confidence = pDraw; }
       else { prono = '2'; confidence = pAway; }
-
-      // Cote estimée à partir de la probabilité (avec marge bookmaker ~10%)
       const impliedOdds = Math.max(1.1, parseFloat((100 / (confidence * 0.90)).toFixed(2)));
-      const cotesDisponibles = COTES_BASE[prono];
-      const cote = cotesDisponibles.reduce((prev, curr) =>
+      const cote = COTES_BASE[prono].reduce((prev, curr) =>
         Math.abs(curr - impliedOdds) < Math.abs(prev - impliedOdds) ? curr : prev
       );
-
-      // Étoiles selon la confiance
       const stars = confidence >= 65 ? 3 : confidence >= 55 ? 2 : 1;
-
-      const LABELS = { '1': 'Domicile gagne', 'N': 'Match nul', '2': 'Extérieur gagne' };
       return {
         home: m.home, homeLogo: m.homeLogo,
         away: m.away, awayLogo: m.awayLogo,
@@ -886,18 +913,33 @@ async function generateCouponV2(rawMatches, isPremium) {
         lambdaHome: lambdas.lambdaHome,
         lambdaAway: lambdas.lambdaAway,
         hasStats: homeStats.hasData && awayStats.hasData,
-        aiAnalysis: groqResult?.explanation || null,
-        aiProno: groqResult?.prono || null,
+        _pHome: pHome, _pDraw: pDraw, _pAway: pAway,
+        _eloHome: homeStats.elo, _eloAway: awayStats.elo,
+        aiAnalysis: null, aiProno: null,
       };
     } catch (e) {
-      // Fallback sur l'ancienne méthode si erreur
-      const PRONOSTICS = ['1', 'N', '2'];
-      const prono = PRONOSTICS[Math.floor(Math.random() * 3)];
-      const cote = COTES_BASE[prono][Math.floor(Math.random() * COTES_BASE[prono].length)];
-      const LABELS = { '1': 'Domicile gagne', 'N': 'Match nul', '2': 'Extérieur gagne' };
-      return { home: m.home, homeLogo: m.homeLogo, away: m.away, awayLogo: m.awayLogo, league: m.league, time: m.time || '--:--', prono, label: LABELS[prono], cote, stars: 1, hasStats: false };
+      const prono = '1';
+      const cote = COTES_BASE[prono][0];
+      return { home: m.home, homeLogo: m.homeLogo, away: m.away, awayLogo: m.awayLogo, league: m.league, time: m.time || '--:--', prono, label: LABELS[prono], cote, stars: 1, hasStats: false, over25: 55.3, btts: 58.3, aiAnalysis: null, aiProno: null };
     }
   }));
+
+  // Étape 2 : un seul appel IA pour tout le coupon
+  if (GROQ_API_KEY || GEMINI_API_KEY) {
+    const batchInput = enriched.map(m => ({
+      home: m.home, away: m.away, league: m.league,
+      pHome: m._pHome, pDraw: m._pDraw, pAway: m._pAway,
+      eloHome: m._eloHome, eloAway: m._eloAway,
+    }));
+    const aiResults = await getAICouponBatch(batchInput).catch(() => ({}));
+    for (const m of enriched) {
+      const key = `${m.home}|${m.away}`;
+      if (aiResults[key]) {
+        m.aiAnalysis = aiResults[key].explanation;
+        m.aiProno = aiResults[key].prono;
+      }
+    }
+  }
 
   // Trier par confiance décroissante, garder les 10 meilleurs
   const sorted = enriched.sort((a, b) => (b.confidence || 0) - (a.confidence || 0)).slice(0, 10);
