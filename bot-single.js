@@ -1070,8 +1070,10 @@ bot.command('coupon', async (ctx) => {
         text += ` • 💰 *${m.cote}*`;
         if (m.predictedScore && m.hasStats) text += ` • Score : *${m.predictedScore}*`;
         text += `\n`;
-        if (isPremium && m.hasStats) {
-          text += `   📈 Over 2.5 : ${m.over25}% | 🎯 BTTS : ${m.btts}%\n`;
+        if (isPremium) {
+          const over25label = m.over25 >= 55 ? `✅ +2.5 (${m.over25}%)` : `❌ -2.5 (${100 - m.over25}%)`;
+          const bttsLabel = m.btts >= 50 ? `✅ Les deux équipes marquent (${m.btts}%)` : `❌ Clean sheet probable (${100 - m.btts}%)`;
+          text += `   ⚽ ${over25label} | ${bttsLabel}\n`;
         }
         if (isPremium && m.aiAnalysis) {
           text += `   🤖 _${m.aiAnalysis}_\n`;

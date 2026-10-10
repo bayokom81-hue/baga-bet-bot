@@ -815,20 +815,24 @@ function buildCouponHtml(d, showHistoryBtn) {
       </div>`;
     }
 
-    // Marchés Over/BTTS pour Premium avec stats
-    if (d.isPremium && hasStats && (m.over25 || m.btts)) {
+    // Marchés Over/BTTS (Premium, toujours affiché)
+    if (d.isPremium && (m.over25 || m.btts)) {
+      const over25 = m.over25 || 0;
+      const btts = m.btts || 0;
+      const overOk = over25 >= 55;
+      const bttsOk = btts >= 50;
       html += `<div style="display:flex;gap:6px;margin-top:8px">
-        ${m.over25 ? `<div style="flex:1;background:var(--card2);border-radius:6px;padding:6px 8px;text-align:center">
-          <div style="font-size:11px;font-weight:800;color:var(--accent)">${m.over25}%</div>
-          <div style="font-size:9px;color:var(--muted);margin-top:1px;text-transform:uppercase">Over 2.5</div>
-        </div>` : ''}
-        ${m.btts ? `<div style="flex:1;background:var(--card2);border-radius:6px;padding:6px 8px;text-align:center">
-          <div style="font-size:11px;font-weight:800;color:var(--gold)">${m.btts}%</div>
-          <div style="font-size:9px;color:var(--muted);margin-top:1px;text-transform:uppercase">BTTS</div>
-        </div>` : ''}
+        <div style="flex:1;background:${overOk ? '#16a34a20' : '#dc262620'};border:1px solid ${overOk ? '#16a34a' : '#dc2626'};border-radius:6px;padding:6px 8px;text-align:center">
+          <div style="font-size:11px;font-weight:800;color:${overOk ? '#16a34a' : '#dc2626'}">${overOk ? '✅' : '❌'} ${overOk ? '+' : '-'}2.5</div>
+          <div style="font-size:9px;color:var(--muted);margin-top:1px">${over25}% buts</div>
+        </div>
+        <div style="flex:1;background:${bttsOk ? '#16a34a20' : '#dc262620'};border:1px solid ${bttsOk ? '#16a34a' : '#dc2626'};border-radius:6px;padding:6px 8px;text-align:center">
+          <div style="font-size:11px;font-weight:800;color:${bttsOk ? '#16a34a' : '#dc2626'}">${bttsOk ? '✅' : '❌'} BTTS</div>
+          <div style="font-size:9px;color:var(--muted);margin-top:1px">${btts}% prob.</div>
+        </div>
         ${m.lambdaHome ? `<div style="flex:1;background:var(--card2);border-radius:6px;padding:6px 8px;text-align:center">
           <div style="font-size:11px;font-weight:800;color:var(--muted2)">${m.lambdaHome}–${m.lambdaAway}</div>
-          <div style="font-size:9px;color:var(--muted);margin-top:1px;text-transform:uppercase">Buts att.</div>
+          <div style="font-size:9px;color:var(--muted);margin-top:1px">Buts att.</div>
         </div>` : ''}
       </div>`;
     }
