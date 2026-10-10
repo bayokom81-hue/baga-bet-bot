@@ -791,7 +791,7 @@ const GEMINI_MODELS = ['gemini-3.8-flash','gemini-2.0-flash','gemini-1.5-flash',
 
 async function getGeminiCouponAnalysis(home, away, stats) {
   if (!GEMINI_API_KEY) return null;
-  const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+  const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
   try {
     const r = await axios.post(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
