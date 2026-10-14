@@ -839,7 +839,7 @@ async function getAICouponBatch(matches) {
       const r = await axios.post(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
         { contents: [{ parts: [{ text: prompt }] }] },
-        { headers: { 'Content-Type': 'application/json' }, timeout: 15000 }
+        { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
       );
       content = r.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     }
@@ -1595,7 +1595,7 @@ async function handleApi(req, res, urlObj) {
         // Lister les modèles disponibles
         const listR = await axios.get(
           `https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`,
-          { timeout: 10000 }
+          { timeout: 20000 }
         );
         const models = (listR.data?.models || []).map(m => m.name?.replace('models/', ''));
         const preferred = ['gemini-3.8-flash','gemini-2.0-flash','gemini-1.5-flash','gemini-1.5-pro','gemini-pro'];
@@ -1603,7 +1603,7 @@ async function handleApi(req, res, urlObj) {
         const r = await axios.post(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
           { contents: [{ parts: [{ text: 'Say exactly: {"prono":"1","explanation":"Test ok."}' }] }] },
-          { headers: { 'Content-Type': 'application/json' }, timeout: 10000 }
+          { headers: { 'Content-Type': 'application/json' }, timeout: 25000 }
         );
         const raw = r.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         res.end(JSON.stringify({ ok: true, raw, model, models, key_prefix: GEMINI_API_KEY.substring(0, 8) + '...' }));
